@@ -22,9 +22,6 @@ import numpy as np
 from tensor_gedmd.basis_sets.basis_set import BasisSet
 
 
-
-from tensor_gedmd.basis_sets.basis_sets import BasisSet
-
 class ProductBasis(BasisSet):
     r"""
     Tensor-product basis built from a list of 1D basis sets.
