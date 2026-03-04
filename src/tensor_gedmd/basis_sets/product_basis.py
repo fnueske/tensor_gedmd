@@ -1,32 +1,93 @@
 # product_basis.py
+"""
+Tensor-product basis utilities.
+
+This module defines :class:`~ProductBasis`, a tensor-product (Kronecker-style)
+basis constructed from a list of one-dimensional basis sets.
+
+Notes
+-----
+- The implementation assumes each 1D basis acts on inputs shaped ``(m, 1)``
+  and returns features shaped ``(m, n)``.
+- Gradients are assumed to be returned by each 1D basis as ``(m, n, 1)``.
+"""
+
 from __future__ import annotations
 
 from typing import Any, List
 
 import numpy as np
 
-from tensor_gedmd.tgedmd.basis_sets.basis_set import BasisSet
+import sys
+import os
+
+this_dir = os.path.dirname(os.path.abspath("file"))
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath("file")))
+sys.path.append("/Users/minakshi/Desktop/")
+
+from Project.tensor_gedmd.src.tensor_gedmd.basis_sets.basis_sets import BasisSet
 
 
 class ProductBasis(BasisSet):
     r"""
     Tensor-product basis built from a list of 1D basis sets.
 
+    The resulting feature map is the per-sample tensor (outer/Kronecker) product
+    of the 1D feature maps across dimensions.
+
+    Parameters
+    ----------
+    basis_list
+        List of 1D basis sets, one per coordinate/dimension. Each element must
+        be a :class:`~BasisSet` instance. All bases must have the same number of
+        features ``n``.
+    dtype
+        Numeric dtype used for internal arrays and outputs.
+
+    Attributes
+    ----------
+    basis_list : list[BasisSet]
+        The stored list of 1D basis sets.
+    d : int
+        Input dimension (number of coordinates / number of bases in
+        ``basis_list``).
+    n : int
+        Total number of tensor-product features, equal to ``(n0 ** d)``, where
+        ``n0`` is the number of features of each 1D basis.
+
     Assumptions
     -----------
-    - basis_list has length d (one basis per coordinate).
-    - Each basis_list[j] is a BasisSet that expects inputs of shape (m, 1)
-      and returns (m, n), and gradient returns (m, n, 1).
-    - All bases have the same number of features n.
+    - ``basis_list`` has length ``d`` (one basis per coordinate).
+    - Each ``basis_list[j]`` expects inputs of shape ``(m, 1)`` and returns
+      ``(m, n)``, and ``gradient`` returns ``(m, n, 1)``.
+    - All bases have the same number of features ``n``.
 
     Dimension conventions
     ---------------------
-    Input x:         (m, d)
-    Output Psi(x):   (m, n^d)
-    Gradient:        (m, n^d, d)
+    - Input ``x``:       ``(m, d)``
+    - Output ``Psi(x)``: ``(m, n**d)``
+    - Gradient:          ``(m, n**d, d)``
     """
 
     def __init__(self, basis_list: List[BasisSet], dtype=np.float64) -> None:
+        """
+        Construct a tensor-product basis from 1D basis sets.
+
+        Parameters
+        ----------
+        basis_list
+            Non-empty list/tuple of :class:`~BasisSet` objects.
+        dtype
+            Numeric dtype used for internal arrays and outputs.
+
+        Raises
+        ------
+        ValueError
+            If ``basis_list`` is empty, or if the first basis does not define
+            ``n``, or if the bases do not all share the same ``n``.
+        TypeError
+            If any element of ``basis_list`` is not a :class:`~BasisSet`.
+        """
         super().__init__(dtype=dtype)
 
         if not isinstance(basis_list, (list, tuple)) or len(basis_list) == 0:
@@ -54,11 +115,27 @@ class ProductBasis(BasisSet):
     @staticmethod
     def _tensor_product_features(A: np.ndarray, B: np.ndarray) -> np.ndarray:
         """
-        Per-sample outer product over feature axes.
+        Compute a per-sample outer product over feature axes.
 
-        A: (m, p)
-        B: (m, q)
-        Returns: (m, p*q)
+        Given feature matrices ``A`` and ``B`` evaluated at the same batch of
+        samples, this returns the tensor-product features for each sample.
+
+        Parameters
+        ----------
+        A
+            Feature matrix of shape ``(m, p)``.
+        B
+            Feature matrix of shape ``(m, q)``.
+
+        Returns
+        -------
+        np.ndarray
+            Tensor-product feature matrix of shape ``(m, p*q)``.
+
+        Notes
+        -----
+        This is equivalent to building, for each sample ``i``, the flattened
+        outer product ``A[i, :] ⊗ B[i, :]``.
         """
         return (A[:, :, None] * B[:, None, :]).reshape(A.shape[0], A.shape[1] * B.shape[1])
 
@@ -66,6 +143,26 @@ class ProductBasis(BasisSet):
     # BasisSet API
     # -------------------------
     def __call__(self, x: Any) -> np.ndarray:
+        """
+        Evaluate the tensor-product basis at inputs ``x``.
+
+        Parameters
+        ----------
+        x
+            Input array-like of shape ``(m, d)`` (or any format accepted by the
+            parent :class:`~BasisSet` input formatter). Here, ``m`` is the batch
+            size and ``d`` is the input dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Basis evaluation ``Psi(x)`` with shape ``(m, n**d)``.
+
+        Raises
+        ------
+        ValueError
+            If the basis evaluation does not preserve the batch dimension.
+        """
         x_arr = self._format_input(x, expected_dim=self.d)  # (m, d)
         m = x_arr.shape[0]
 
@@ -86,7 +183,25 @@ class ProductBasis(BasisSet):
 
     def _gradient(self, x: Any) -> np.ndarray:
         """
-        Gradient w.r.t. x, shape (m, n^d, d).
+        Evaluate the gradient of the tensor-product basis with respect to ``x``.
+
+        Parameters
+        ----------
+        x
+            Input array-like of shape ``(m, d)`` (or any format accepted by the
+            parent :class:`~BasisSet` input formatter).
+
+        Returns
+        -------
+        np.ndarray
+            Gradient array with shape ``(m, n**d, d)``, where the last axis
+            corresponds to partial derivatives with respect to each coordinate.
+
+        Raises
+        ------
+        ValueError
+            If any 1D basis gradient does not have the expected shape
+            ``(m, n, 1)``.
         """
         x_arr = self._format_input(x, expected_dim=self.d)  # (m, d)
         m = x_arr.shape[0]
@@ -129,19 +244,6 @@ class ProductBasis(BasisSet):
             out[:, :, dim] = G
 
         return out
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

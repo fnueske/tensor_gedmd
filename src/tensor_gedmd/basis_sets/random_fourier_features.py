@@ -4,8 +4,16 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import numpy as np
+import sys
+import os
 
-from tensor_gedmd.tgedmd.basis_sets.basis_set import BasisSet
+this_dir=os.path.dirname(os.path.abspath("file"))
+parent_dir=os.path.dirname(os.path.dirname(os.path.abspath("file")))
+sys.path.append("/Users/minakshi/Desktop/")
+
+
+from Project.tensor_gedmd.src.tensor_gedmd.basis_sets.basis_sets import BasisSet
+# from tensor_gedmd.tgedmd.basis_sets.basis_set import BasisSet
 
 
 class RandomFourierFeatures(BasisSet):
