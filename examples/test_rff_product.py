@@ -1,7 +1,10 @@
 import numpy as np
+
 from tensor_gedmd.basis_sets.basis_sets import BasisSet
 from tensor_gedmd.basis_sets.random_fourier_features import RandomFourierFeatures
-from tensor_gedmd.basis_sets.product_basis import Product_Basis
+from tensor_gedmd.basis_sets.product_basis import ProductBasis
+
+
 
 def test_random_fourier_features():
     # Test with 2D input and 3 basis functions
@@ -29,8 +32,8 @@ def test_product_basis():
             x_arr = self._format_input(x, expected_dim=1)
             return np.hstack([i * x_arr ** (i - 1) if i > 0 else np.zeros_like(x_arr) for i in range(self.n)])
 
-    basis_list = [SimpleBasis(n=3), SimpleBasis(n=2)]
-    product_basis = Product_Basis(basis_list)
+    basis_list = [SimpleBasis(n=3), SimpleBasis(n=3)]
+    product_basis = ProductBasis(basis_list)
 
     x = np.array([[1.0, 2.0], [3.0, 4.0]])  # (2, 2)
     output = product_basis(x)
@@ -41,3 +44,10 @@ if __name__ == "__main__":
     test_product_basis()   
 
     
+
+
+
+
+
+
+d
