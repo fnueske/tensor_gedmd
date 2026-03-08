@@ -19,7 +19,11 @@ from typing import Any, List
 import numpy as np
 
 
+<<<<<<< HEAD
 from tensor_gedmd.basis_sets.basis_sets import BasisSet
+=======
+from tensor_gedmd.basis_sets.basis_set import BasisSet
+>>>>>>> tgedmd
 
 
 class ProductBasis(BasisSet):
@@ -241,64 +245,3 @@ class ProductBasis(BasisSet):
 
 
 
-# import numpy as np
-# from py_molkin.models.basis_sets import BasisSet
-
-
-
-# class Product_Basis:
-#     def __init__(self, basis_list):
-#         self.basis_list = basis_list
-#         self.d = len(basis_list)
-#         self.n = basis_list[0].n
-    
-
-
-#     def __call__(self, X=None):
-#         # Check if this is a derivative-aware basis
-#         if getattr(self.basis_list[0], "d", None) is None:
-#             # ---- Standard basis: shape (n**p, m) ----
-#             m = X.shape[1]
-#             Psi_full = self.basis_list[0](X[0, :][None, :])  # (n, m)  # initialize
-#             for ii in range(1, self.d):
-#                 psi_i = self.basis_list[ii](X[ii, :][None, :])  # (n, m)
-#                 Psi_full = np.einsum("ij,kj->ikj", Psi_full, psi_i)  # (n^ii, n, m)
-#                 Psi_full = Psi_full.reshape((self.n**(ii+1), m))
-#             return Psi_full
-
-  
-
-#     def diff(self, X):
-#         """
-#         Compute derivatives wrt all coordinates.
-#         Returns shape (n^d, d, m)
-#         """
-#         m = X.shape[1]
-#         n = self.n
-#         d = self.d
-#         out = np.zeros((n**d, d, m))
-
-#         for dim in range(d):
-#             # derivative for this dimension
-#             dPsi = self.basis_list[dim].derivative(X[dim:dim+1, :])  # (n,1,m)
-#             Psi_list_temp = []
-
-#             for j in range(d):
-#                 if j == dim:
-#                     Psi_list_temp.append(dPsi)  # (n,1,m)
-#                 else:
-#                     psi_j = self.basis_list[j](X[j:j+1, :])  # (n,m)
-#                     psi_j = psi_j[:, None, :]  # (n,1,m)
-#                     Psi_list_temp.append(psi_j)
-
-#             # Compute full tensor-product using iterative broadcasting
-#             Psi_dim = Psi_list_temp[0]  # (n,1,m)
-#             for k in range(1, d):
-#                 # broadcast multiply along feature axis
-#                 shape_prev = Psi_dim.shape[0]
-#                 shape_next = Psi_list_temp[k].shape[0]
-#                 Psi_dim = (Psi_dim[:, None, :, :] * Psi_list_temp[k][None, :, :, :]).reshape(shape_prev*shape_next, 1, m)
-
-#             out[:, dim, :] = Psi_dim[:, 0, :]
-
-#         return out
