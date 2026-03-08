@@ -19,11 +19,7 @@ from typing import Any, List
 import numpy as np
 
 
-<<<<<<< HEAD
-from tensor_gedmd.basis_sets.basis_sets import BasisSet
-=======
 from tensor_gedmd.basis_sets.basis_set import BasisSet
->>>>>>> tgedmd
 
 
 class ProductBasis(BasisSet):
