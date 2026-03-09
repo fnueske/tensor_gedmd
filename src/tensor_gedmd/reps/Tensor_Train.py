@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import List, Sequence
+from typing import List, Sequence, Union
 import numpy as np
 
 
@@ -8,19 +8,17 @@ class TT:
     """
     Minimal Tensor Train (TT) container.
 
-    A tensor train is represented by a list of 4D cores:
-        core[k].shape = (r_k, n_k, m_k, r_{k+1})
-
-    where
-        r_k, r_{k+1} : TT ranks
-        n_k          : row mode size
-        m_k          : column mode size
+    This class supports both:
+    - Tensor TT: cores of shape (r_k, n_k, r_{k+1})
+    - Operator TT: cores of shape (r_k, n_k, m_k, r_{k+1})
 
     Notes
     -----
-    - A standard tensor TT has m_k = 1 for all k.
-    - A TT operator / MPO has at least one m_k > 1.
-    - This class is a lightweight container and validator for TT cores.
+    - All cores must have the same order: either all 3D or all 4D.
+    - Tensor TT:
+          core[k].shape = (r_k, n_k, r_{k+1})
+    - Operator TT:
+          core[k].shape = (r_k, n_k, m_k, r_{k+1})
     """
 
     def __init__(self, cores: Sequence[np.ndarray]):
@@ -28,39 +26,77 @@ class TT:
             raise TypeError("cores must be a non-empty list or tuple of numpy arrays.")
 
         self._cores: List[np.ndarray] = [np.asarray(core) for core in cores]
-        self._validate_cores()
+        self._ndim: int = self._validate_cores()
 
         self.order: int = len(self._cores)
-        self.row_dims: List[int] = [core.shape[1] for core in self._cores]
-        self.col_dims: List[int] = [core.shape[2] for core in self._cores]
-        self.ranks: List[int] = [self._cores[0].shape[0]] + [core.shape[3] for core in self._cores]
+        self.is_operator: bool = (self._ndim == 4)
 
-    def _validate_cores(self) -> None:
-        """Validate TT core shapes and rank compatibility."""
+        if self.is_operator:
+            self.row_dims: List[int] = [core.shape[1] for core in self._cores]
+            self.col_dims: List[int] = [core.shape[2] for core in self._cores]
+            self.ranks: List[int] = [self._cores[0].shape[0]] + [core.shape[3] for core in self._cores]
+        else:
+            self.mode_dims: List[int] = [core.shape[1] for core in self._cores]
+            self.ranks: List[int] = [self._cores[0].shape[0]] + [core.shape[2] for core in self._cores]
+
+    def _validate_cores(self) -> int:
+        """
+        Validate TT cores and return their common order (3 or 4).
+        """
         for i, core in enumerate(self._cores):
             if not isinstance(core, np.ndarray):
                 raise TypeError(f"Core {i} must be a numpy.ndarray.")
-            if core.ndim != 4:
+            if core.ndim not in (3, 4):
                 raise ValueError(
-                    f"Core {i} must be 4-dimensional, got shape {core.shape}."
+                    f"Core {i} must be either 3D or 4D, got shape {core.shape}."
                 )
 
-        for i in range(len(self._cores) - 1):
-            if self._cores[i].shape[3] != self._cores[i + 1].shape[0]:
+        ndim = self._cores[0].ndim
+
+        for i, core in enumerate(self._cores):
+            if core.ndim != ndim:
                 raise ValueError(
-                    f"Rank mismatch between core {i} and core {i+1}: "
-                    f"{self._cores[i].shape[3]} != {self._cores[i + 1].shape[0]}"
+                    "All TT cores must have the same order. "
+                    f"Core 0 is {ndim}D, but core {i} is {core.ndim}D."
                 )
 
-        if self._cores[0].shape[0] != 1:
-            raise ValueError(
-                f"First TT rank must be 1, got {self._cores[0].shape[0]}."
-            )
+        if ndim == 3:
+            for i in range(len(self._cores) - 1):
+                if self._cores[i].shape[2] != self._cores[i + 1].shape[0]:
+                    raise ValueError(
+                        f"Rank mismatch between core {i} and core {i + 1}: "
+                        f"{self._cores[i].shape[2]} != {self._cores[i + 1].shape[0]}"
+                    )
 
-        if self._cores[-1].shape[3] != 1:
-            raise ValueError(
-                f"Last TT rank must be 1, got {self._cores[-1].shape[3]}."
-            )
+            if self._cores[0].shape[0] != 1:
+                raise ValueError(
+                    f"First TT rank must be 1, got {self._cores[0].shape[0]}."
+                )
+
+            if self._cores[-1].shape[2] != 1:
+                raise ValueError(
+                    f"Last TT rank must be 1, got {self._cores[-1].shape[2]}."
+                )
+
+        else:  # ndim == 4
+            for i in range(len(self._cores) - 1):
+                if self._cores[i].shape[3] != self._cores[i + 1].shape[0]:
+                    raise ValueError(
+                        f"Rank mismatch between core {i} and core {i + 1}: "
+                        f"{self._cores[i].shape[3]} != {self._cores[i + 1].shape[0]}"
+                    )
+
+            if self._cores[0].shape[0] != 1:
+                raise ValueError(
+                    f"First TT rank must be 1, got {self._cores[0].shape[0]}."
+                )
+
+            if self._cores[-1].shape[3] != 1:
+                raise ValueError(
+                    f"Last TT rank must be 1, got {self._cores[-1].shape[3]}."
+                )
+
+        return ndim
 
     def __len__(self) -> int:
         """Return TT order."""
@@ -80,18 +116,20 @@ class TT:
         """Return TT ranks [r0, r1, ..., rd]."""
         return self.ranks.copy()
 
-    def mode_sizes(self) -> List[tuple]:
+    def mode_sizes(self) -> Union[List[int], List[tuple]]:
         """
-        Return mode sizes as a list of (row_dim, col_dim) pairs.
-        """
-        return list(zip(self.row_dims, self.col_dims))
+        Return mode sizes.
 
-    def is_operator(self) -> bool:
+        Returns
+        -------
+        list[int]
+            For tensor TT: [n1, n2, ..., nd]
+        list[tuple[int, int]]
+            For operator TT: [(n1, m1), (n2, m2), ..., (nd, md)]
         """
-        Return True if this TT represents an operator (MPO),
-        i.e. at least one column mode is greater than 1.
-        """
-        return any(c > 1 for c in self.col_dims)
+        if self.is_operator:
+            return list(zip(self.row_dims, self.col_dims))
+        return self.mode_dims.copy()
 
     @property
     def cores(self) -> List[np.ndarray]:
@@ -99,14 +137,28 @@ class TT:
         return self._cores
 
     def __repr__(self) -> str:
-        kind = "operator" if self.is_operator() else "tensor"
+        if self.is_operator:
+            return (
+                f"TT(operator, order={self.order}, "
+                f"row_dims={self.row_dims}, "
+                f"col_dims={self.col_dims}, "
+                f"ranks={self.ranks})"
+            )
+
         return (
-            f"TT({kind}, order={self.order}, "
-            f"row_dims={self.row_dims}, "
-            f"col_dims={self.col_dims}, "
+            f"TT(tensor, order={self.order}, "
+            f"mode_dims={self.mode_dims}, "
             f"ranks={self.ranks})"
         )
-    
+
+
+
+
+
+
+
+
+
 
 
 
