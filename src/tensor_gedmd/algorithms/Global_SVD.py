@@ -1,58 +1,7 @@
 import numpy as np
 
 from tensor_gedmd.reps.Tensor_Train import TT
-
-
-def _truncate_rank(s: np.ndarray, rmax: int = None, tol: float = 0) -> int:
-    """
-    Compute truncated rank from singular values.
-
-    Parameters
-    ----------
-    s : np.ndarray
-        1D array of singular values.
-    rmax : int, optional
-        Maximum allowed rank. If None, no rank cap is applied.
-    tol : float, optional
-        Relative tail-energy truncation tolerance.
-        If tol == 0, no tolerance-based truncation is applied.
-
-    Returns
-    -------
-    int
-        Truncated rank.
-    """
-    s = np.asarray(s)
-
-    if s.ndim != 1:
-        raise ValueError("s must be a 1D array of singular values.")
-
-    n = len(s)
-    if n == 0:
-        return 1
-
-    if rmax is not None and rmax < 1:
-        raise ValueError(f"rmax must be at least 1, got {rmax}.")
-
-    if tol < 0:
-        raise ValueError(f"tol must be non-negative, got {tol}.")
-
-    rank_rmax = n if rmax is None else min(rmax, n)
-    rank_tol = n
-
-    if tol > 0:
-        sq = s ** 2
-        tail_energy = np.cumsum(sq[::-1])[::-1]
-        rel_tail_energy = tail_energy / tail_energy[0]
-
-        idx = np.where(rel_tail_energy <= tol)[0]
-        if idx.size > 0:
-            rank_tol = max(1, int(idx[0]))
-        else:
-            rank_tol = n
-
-    return max(1, min(rank_rmax, rank_tol, n))
-
+from tensor_gedmd.algorithms.Util import _truncate_rank
 
 def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
     """
