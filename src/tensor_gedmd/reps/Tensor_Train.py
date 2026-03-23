@@ -15,15 +15,19 @@ class TT:
     Notes
     -----
     - All cores must have the same order: either all 3D or all 4D.
-    - Tensor TT:
-          core[k].shape = (r_k, n_k, r_{k+1})
-    - Operator TT:
-          core[k].shape = (r_k, n_k, m_k, r_{k+1})
+    - The first TT rank is always required to be 1.
+    - The last TT rank can optionally be required to be 1.
     """
 
-    def __init__(self, cores: Sequence[np.ndarray]):
+    def __init__(
+        self,
+        cores: Sequence[np.ndarray],
+        require_right_rank_one: bool = True,
+    ):
         if not isinstance(cores, (list, tuple)) or len(cores) == 0:
             raise TypeError("cores must be a non-empty list or tuple of numpy arrays.")
+
+        self.require_right_rank_one = require_right_rank_one
 
         self._cores: List[np.ndarray] = [np.asarray(core) for core in cores]
         self._ndim: int = self._validate_cores()
@@ -47,9 +51,7 @@ class TT:
             if not isinstance(core, np.ndarray):
                 raise TypeError(f"Core {i} must be a numpy.ndarray.")
             if core.ndim not in (3, 4):
-                raise ValueError(
-                    f"Core {i} must be either 3D or 4D, got shape {core.shape}."
-                )
+                raise ValueError(f"Core {i} must be either 3D or 4D, got shape {core.shape}.")
 
         ndim = self._cores[0].ndim
 
@@ -73,7 +75,7 @@ class TT:
                     f"First TT rank must be 1, got {self._cores[0].shape[0]}."
                 )
 
-            if self._cores[-1].shape[2] != 1:
+            if self.require_right_rank_one and self._cores[-1].shape[2] != 1:
                 raise ValueError(
                     f"Last TT rank must be 1, got {self._cores[-1].shape[2]}."
                 )
@@ -91,7 +93,7 @@ class TT:
                     f"First TT rank must be 1, got {self._cores[0].shape[0]}."
                 )
 
-            if self._cores[-1].shape[3] != 1:
+            if self.require_right_rank_one and self._cores[-1].shape[3] != 1:
                 raise ValueError(
                     f"Last TT rank must be 1, got {self._cores[-1].shape[3]}."
                 )
@@ -99,41 +101,26 @@ class TT:
         return ndim
 
     def __len__(self) -> int:
-        """Return TT order."""
         return self.order
 
     def __getitem__(self, k: int) -> np.ndarray:
-        """Return the k-th core."""
         return self.get_core(k)
 
     def get_core(self, k: int) -> np.ndarray:
-        """Return the k-th TT core."""
         if not 0 <= k < self.order:
             raise IndexError(f"Core index out of range: {k}")
         return self._cores[k]
 
     def tt_ranks(self) -> List[int]:
-        """Return TT ranks [r0, r1, ..., rd]."""
         return self.ranks.copy()
 
     def mode_sizes(self) -> Union[List[int], List[tuple]]:
-        """
-        Return mode sizes.
-
-        Returns
-        -------
-        list[int]
-            For tensor TT: [n1, n2, ..., nd]
-        list[tuple[int, int]]
-            For operator TT: [(n1, m1), (n2, m2), ..., (nd, md)]
-        """
         if self.is_operator:
             return list(zip(self.row_dims, self.col_dims))
         return self.mode_dims.copy()
 
     @property
     def cores(self) -> List[np.ndarray]:
-        """Return the list of TT cores."""
         return self._cores
 
     def __repr__(self) -> str:
@@ -142,15 +129,16 @@ class TT:
                 f"TT(operator, order={self.order}, "
                 f"row_dims={self.row_dims}, "
                 f"col_dims={self.col_dims}, "
-                f"ranks={self.ranks})"
+                f"ranks={self.ranks}, "
+                f"require_right_rank_one={self.require_right_rank_one})"
             )
 
         return (
             f"TT(tensor, order={self.order}, "
             f"mode_dims={self.mode_dims}, "
-            f"ranks={self.ranks})"
+            f"ranks={self.ranks}, "
+            f"require_right_rank_one={self.require_right_rank_one})"
         )
-
 
 
 

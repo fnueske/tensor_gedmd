@@ -1,99 +1,145 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 from tensor_gedmd.reps.Tensor_Train import TT
-from tensor_gedmd.algorithms.Global_SVD import global_svd_tt
+from tensor_gedmd.algorithms.Global_SVD import global_svd_tt_general
 
 
-np.random.seed(0)
+def tt_to_dense(tt: TT) -> np.ndarray:
+    if tt.is_operator:
+        raise ValueError("tt_to_dense expects a tensor TT, not an operator TT.")
 
-cores = [
-    np.random.rand(1, 4, 8),
-    np.random.rand(8, 5, 8),
-    np.random.rand(8, 8, 1),
-]
+    X = tt.get_core(0)
 
-psi_tt = TT(cores)
+    for k in range(1, len(tt)):
+        G = tt.get_core(k)
+        X = np.tensordot(X, G, axes=([-1], [0]))
 
-print("Input TT:")
-print(psi_tt)
-print("Ranks:", psi_tt.tt_ranks())
-print("Mode sizes:", psi_tt.mode_sizes())
-print("Is operator:", psi_tt.is_operator)
-print()
+    X = np.squeeze(X, axis=0)
 
+    # Only squeeze last axis if TT is closed on right
+    if getattr(tt, "require_right_rank_one", True) and X.shape[-1] == 1:
+        X = np.squeeze(X, axis=-1)
 
-def summarize_result(name, Sigma, Sigma_full=None):
-    Sigma = np.asarray(Sigma).ravel()
-    rank = len(Sigma)
-
-    print(f"=== {name} ===")
-    print("Retained rank:", rank)
-    print("Singular values:", Sigma)
-
-    if rank > 0:
-        print("Largest singular value:", Sigma[0])
-        print("Smallest retained singular value:", Sigma[-1])
-        print("Condition number (retained):", Sigma[0] / Sigma[-1] if Sigma[-1] > 0 else np.inf)
-
-    retained_energy = np.sum(Sigma**2)
-    print("Retained energy ||Sigma||_F^2:", retained_energy)
-
-    if Sigma_full is not None:
-        Sigma_full = np.asarray(Sigma_full).ravel()
-        total_energy = np.sum(Sigma_full**2)
-        discarded_energy = total_energy - retained_energy
-        rel_energy = retained_energy / total_energy if total_energy > 0 else 0.0
-        rel_error = np.sqrt(discarded_energy / total_energy) if total_energy > 0 else 0.0
-
-        print("Total energy ||Sigma_full||_F^2:", total_energy)
-        print("Discarded energy:", discarded_energy)
-        print("Retained energy fraction:", rel_energy)
-        print("Relative truncation error:", rel_error)
-
-    print()
+    return X
 
 
-# Full decomposition: use as reference
-U_cores_full, Sigma_full, V_core_full = global_svd_tt(psi_tt)
+def reconstruction_from_factors(U_tt, Sigma, V_core):
+    U_dense = tt_to_dense(U_tt)
+    r = U_dense.shape[-1]
 
-print("=== No truncation ===")
-print("Number of U cores:", len(U_cores_full))
-print("U core shapes:", [core.shape for core in U_cores_full])
-print("Sigma shape:", np.shape(Sigma_full))
-print("V core shape:", np.shape(V_core_full))
-print()
+    V_mat = V_core[:, :, 0]
 
-summarize_result("No truncation", Sigma_full)
+    US = np.tensordot(U_dense, Sigma, axes=([-1], [0]))
+    A_rec = np.tensordot(US, V_mat, axes=([-1], [0]))
 
-
-# rmax only
-U_cores_rmax, Sigma_rmax, V_core_rmax = global_svd_tt(psi_tt, rmax=2)
-
-print("U core shapes:", [core.shape for core in U_cores_rmax])
-print("Sigma shape:", np.shape(Sigma_rmax))
-print("V core shape:", np.shape(V_core_rmax))
-print()
-
-summarize_result("Only rmax=2", Sigma_rmax, Sigma_full)
+    return A_rec
 
 
-# tol only
-U_cores_tol, Sigma_tol, V_core_tol = global_svd_tt(psi_tt, tol=1e-6)
-
-print("U core shapes:", [core.shape for core in U_cores_tol])
-print("Sigma shape:", np.shape(Sigma_tol))
-print("V core shape:", np.shape(V_core_tol))
-print()
-
-summarize_result("Only tol=1e-6", Sigma_tol, Sigma_full)
+def relative_error(A, B):
+    return np.linalg.norm(A - B) / max(np.linalg.norm(A), 1e-15)
 
 
-# both rmax and tol
-U_cores_both, Sigma_both, V_core_both = global_svd_tt(psi_tt, rmax=2, tol=1e-6)
+if __name__ == "__main__":
+    np.random.seed(7)
 
-print("U core shapes:", [core.shape for core in U_cores_both])
-print("Sigma shape:", np.shape(Sigma_both))
-print("V core shape:", np.shape(V_core_both))
-print()
+    # Build TT
+    G0 = np.random.randn(1, 4, 6)
+    G1 = np.random.randn(6, 5, 7)
+    G2 = np.random.randn(7, 8, 1)
 
-summarize_result("Both rmax=2 and tol=1e-6", Sigma_both, Sigma_full)
+    psi_tt = TT([G0, G1, G2])
+
+    print("Input TT:", psi_tt)
+
+    A_original = tt_to_dense(psi_tt)
+
+    # ==========================================================
+    # No truncation
+    # ==========================================================
+    U_tt_full, Sigma_full, V_core_full = global_svd_tt_general(
+        psi_tt,
+        rmax=None,
+        tol=0.0,
+    )
+
+    A_rec_full = reconstruction_from_factors(U_tt_full, Sigma_full, V_core_full)
+
+    err_full = relative_error(A_original, A_rec_full)
+
+    print("No truncation relative error:", err_full)
+
+    # ==========================================================
+    # 1) Truncation by rank
+    # ==========================================================
+    full_rank = Sigma_full.shape[0]
+    rmax_values = list(range(1, full_rank + 1))
+
+    rank_errors = []
+
+    for rmax in rmax_values:
+        U_tt, Sigma, V_core = global_svd_tt_general(
+            psi_tt,
+            rmax=rmax,
+            tol=0.0,
+        )
+
+        A_rec = reconstruction_from_factors(U_tt, Sigma, V_core)
+        err = relative_error(A_original, A_rec)
+        rank_errors.append(err)
+
+        print(f"rmax={rmax}, error={err}")
+
+    # Plot error vs truncation rank
+    plt.figure()
+    plt.plot(rmax_values, rank_errors, marker="o")
+    plt.yscale("log")
+    plt.xlabel("Truncation rank (rmax)")
+    plt.ylabel("Relative reconstruction error")
+    plt.title("Error vs truncation rank")
+    plt.grid(True)
+    plt.show()
+
+    # ==========================================================
+    # 2) Truncation by tolerance
+    # ==========================================================
+    tol_values = np.logspace(-12, -1, 12)
+    tol_errors = []
+    tol_ranks = []
+
+    for tol in tol_values:
+        U_tt, Sigma, V_core = global_svd_tt_general(
+            psi_tt,
+            rmax=None,
+            tol=tol,
+        )
+
+        A_rec = reconstruction_from_factors(U_tt, Sigma, V_core)
+        err = relative_error(A_original, A_rec)
+
+        tol_errors.append(err)
+        tol_ranks.append(Sigma.shape[0])
+
+        print(f"tol={tol:.1e}, rank={Sigma.shape[0]}, error={err}")
+
+    # Plot error vs tolerance
+    plt.figure()
+    plt.plot(tol_values, tol_errors, marker="o")
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.xlabel("Tolerance")
+    plt.ylabel("Relative reconstruction error")
+    plt.title("Error vs truncation tolerance")
+    plt.grid(True)
+    plt.show()
+
+    # Plot retained rank vs tolerance
+    plt.figure()
+    plt.plot(tol_values, tol_ranks, marker="o")
+    plt.xscale("log")
+    plt.xlabel("Tolerance")
+    plt.ylabel("Retained rank")
+    plt.title("Retained rank vs tolerance")
+    plt.grid(True)
+    plt.show()
+

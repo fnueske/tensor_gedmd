@@ -54,7 +54,6 @@ def _truncate_rank(s: np.ndarray, rmax: int = None, tol: float = 0) -> int:
     return max(1, min(rank_rmax, rank_tol, n))
 
 
-
 def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
     """
     Global SVD of Psi(X) in TT format.
@@ -68,7 +67,8 @@ def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
         G^(p) has shape (m, m, 1)
 
     The final core G^(p) is the terminal/sample core and is replaced by V^T
-    conceptually; this function returns V with shape (m, r).
+    conceptually; this function returns V stored as a TT-like core of shape
+    (r, m, 1).
 
     Parameters
     ----------
@@ -81,13 +81,13 @@ def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
 
     Returns
     -------
-    U_cores : list[np.ndarray]
-        TT cores of the left singular tensor, i.e. updated
-        [G^(0), ..., G^(p-1)], with open right boundary rank r.
+    U_tt : TT
+        TT object containing the left singular tensor cores
+        [G^(0), ..., G^(p-1)] with open right boundary.
     Sigma : np.ndarray
         Diagonal matrix of retained singular values, shape (r, r).
     V : np.ndarray
-        Right singular vectors, shape (m, r).
+        Right singular vectors stored as a core of shape (r, m, 1).
     """
     if not isinstance(psi_tt, TT):
         raise TypeError("psi_tt must be an instance of TT.")
@@ -97,8 +97,7 @@ def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
             "global_svd_tt expects a tensor TT with 3D cores, not an operator TT."
         )
 
-    cores = [core.copy() for core in psi_tt.cores]
-    p = len(cores) - 1  # last core is the terminal/sample core
+    p = len(psi_tt) - 1  # last core is the terminal/sample core
 
     if p < 1:
         raise ValueError(
@@ -106,7 +105,7 @@ def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
         )
 
     # Validate final core G^(p): shape (m, m, 1)
-    G_last = cores[p]
+    G_last = psi_tt.get_core(p)
     if G_last.ndim != 3:
         raise ValueError(
             f"Final core must be 3D with shape (m, m, 1), got {G_last.shape}."
@@ -119,19 +118,19 @@ def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
         )
 
     m = m1
+    U_cores = []
 
-    # Sweep over feature cores except the last feature core:
-    # k = 0, ..., p-2
+    # Start with the first core
+    G_curr = psi_tt.get_core(0).copy()
+    if G_curr.ndim != 3:
+        raise ValueError(f"Core 0 must be 3D, got shape {G_curr.shape}.")
+
+    # Sweep over feature cores except the last feature core: k = 0, ..., p-2
     for k in range(p - 1):
-        G = cores[k]  # shape (r_prev, n_k, r_next)
-
-        if G.ndim != 3:
-            raise ValueError(f"Core {k} must be 3D, got shape {G.shape}.")
-
-        r_prev, n_k, r_next = G.shape
+        r_prev, n_k, r_next = G_curr.shape
 
         # Unfold G^(k) into shape (r_prev * n_k, r_next)
-        A = G.reshape(r_prev * n_k, r_next)
+        A = G_curr.reshape(r_prev * n_k, r_next)
 
         U, S, Vt = np.linalg.svd(A, full_matrices=False)
         r_new = _truncate_rank(S, rmax=rmax, tol=tol)
@@ -140,25 +139,38 @@ def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
         S = S[:r_new]
         Vt = Vt[:r_new, :]
 
-        # Replace G^(k) by reshaped U
-        cores[k] = U.reshape(r_prev, n_k, r_new)
+        # Store updated left core
+        U_cores.append(U.reshape(r_prev, n_k, r_new))
 
         # Push Sigma V^T into the next core
         SVt = S[:, None] * Vt
-        G_next = cores[k + 1]
+        G_next = psi_tt.get_core(k + 1).copy()
 
         if G_next.ndim != 3:
             raise ValueError(f"Core {k + 1} must be 3D, got shape {G_next.shape}.")
-        # G_next has shape (r_next, n_{k+1}, r_{k+1}), and we need to contract the first mode with SVt of shape (r_new, r_next).
-        # The result will have shape (r_new, n_{k+1}, r_{k+1}), which is the new shape for core k+1.
-        # Also, we can optimize the contraction by directly multiplying SVt with the appropriate slices of G_next without explicitly forming the full tensor product.
-        diag_vecs = np.diagonal(G_next, axis1=0, axis2=2).T  # shape (r_next, n_{k+1})
-        cores[k + 1] = np.einsum("aj,jk->akj", SVt, diag_vecs, optimize=True)
-    
-        
+
+        if G_next.shape[0] != r_next:
+            raise ValueError(
+                f"Incompatible TT ranks between cores {k} and {k+1}: "
+                f"{r_next} != {G_next.shape[0]}."
+            )
+
+        # Optimized contraction if G_next has diagonal rank coupling
+        if G_next.shape[0] == G_next.shape[2]:
+            idx = np.arange(G_next.shape[0])
+            mask = np.ones_like(G_next, dtype=bool)
+            mask[idx, :, idx] = False
+
+            if np.allclose(G_next[mask], 0.0, atol=1e-14):
+                diag_vecs = np.diagonal(G_next, axis1=0, axis2=2).T
+                G_curr = np.einsum("aj,jk->akj", SVt, diag_vecs, optimize=True)
+            else:
+                G_curr = np.tensordot(SVt, G_next, axes=(1, 0))
+        else:
+            G_curr = np.tensordot(SVt, G_next, axes=(1, 0))
 
     # Final SVD on the last feature core G^(p-1)
-    Gp = cores[p - 1]
+    Gp = G_curr
 
     if Gp.ndim != 3:
         raise ValueError(f"Last feature core must be 3D, got shape {Gp.shape}.")
@@ -179,14 +191,14 @@ def global_svd_tt(psi_tt: TT, rmax: int = None, tol: float = 0.0):
     S = S[:r]
     Vt = Vt[:r, :]
 
-    # Replace G^(p-1) by reshaped U
-    cores[p - 1] = U.reshape(r_prev, n_p, r)
+    U_cores.append(U.reshape(r_prev, n_p, r))
 
-    U_cores = cores[:p]
+    # IMPORTANT: U_tt has open right boundary, so do not require last rank = 1
+    U_tt = TT(U_cores, require_right_rank_one=False)
     Sigma = np.diag(S)
-    V = Vt.reshape(r,m,1) # shape (r,m,1)
+    V = Vt.reshape(r, m, 1)
 
-    return U_cores, Sigma, V
+    return U_tt, Sigma, V
 
 
 def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
@@ -225,8 +237,9 @@ def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
 
     Returns
     -------
-    U_cores : list[np.ndarray]
-        TT cores of the left factor, i.e. updated [G^(0), ..., G^(p-1)].
+    U_tt : TT
+        TT object containing the left factor cores [G^(0), ..., G^(p-1)]
+        with open right boundary.
     Sigma : np.ndarray
         Diagonal matrix of retained singular values, shape (r, r).
     V_core : np.ndarray
@@ -240,36 +253,39 @@ def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
             "global_svd_tt_general expects a tensor TT with 3D cores, not an operator TT."
         )
 
-    cores = [core.copy() for core in psi_tt.cores]
-    p = len(cores) - 1
+    p = len(psi_tt) - 1
 
     if p < 1:
         raise ValueError(
             "psi_tt must contain at least one feature core and one final core."
         )
 
-    # Validate all cores are 3D
-    for k, G in enumerate(cores):
-        if G.ndim != 3:
-            raise ValueError(f"Core {k} must be 3D, got shape {G.shape}.")
-
     # Validate final core G^(p): shape (r_p, n_p, 1)
-    G_last = cores[p]
+    G_last = psi_tt.get_core(p)
+    if G_last.ndim != 3:
+        raise ValueError(
+            f"Final core must be 3D with shape (r_p, n_p, 1), got {G_last.shape}."
+        )
+
     r_last, n_last, one = G_last.shape
     if one != 1:
         raise ValueError(
             f"Final core must have shape (r_p, n_p, 1), got {G_last.shape}."
         )
 
-    # ------------------------------------------------------------------
+    U_cores = []
+
+    # Start with first core
+    G_curr = psi_tt.get_core(0).copy()
+    if G_curr.ndim != 3:
+        raise ValueError(f"Core 0 must be 3D, got shape {G_curr.shape}.")
+
     # Sweep over feature cores G^(0), ..., G^(p-2)
-    # ------------------------------------------------------------------
     for k in range(p - 1):
-        G = cores[k]
-        r_prev, n_k, r_next = G.shape
+        r_prev, n_k, r_next = G_curr.shape
 
         # Unfold G^(k) into shape (r_prev * n_k, r_next)
-        A = G.reshape(r_prev * n_k, r_next)
+        A = G_curr.reshape(r_prev * n_k, r_next)
 
         U, S, Vt = np.linalg.svd(A, full_matrices=False)
         r_new = _truncate_rank(S, rmax=rmax, tol=tol)
@@ -278,12 +294,15 @@ def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
         S = S[:r_new]
         Vt = Vt[:r_new, :]
 
-        # Replace G^(k) by reshaped U
-        cores[k] = U.reshape(r_prev, n_k, r_new)
+        # Store updated left core
+        U_cores.append(U.reshape(r_prev, n_k, r_new))
 
         # Push Sigma V^T into the next core
         SVt = S[:, None] * Vt
-        G_next = cores[k + 1]
+        G_next = psi_tt.get_core(k + 1).copy()
+
+        if G_next.ndim != 3:
+            raise ValueError(f"Core {k + 1} must be 3D, got shape {G_next.shape}.")
 
         if G_next.shape[0] != r_next:
             raise ValueError(
@@ -299,19 +318,13 @@ def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
 
             if np.allclose(G_next[mask], 0.0, atol=1e-14):
                 diag_vecs = np.diagonal(G_next, axis1=0, axis2=2).T
-                cores[k + 1] = np.einsum("aj,jk->akj", SVt, diag_vecs, optimize=True)
+                G_curr = np.einsum("aj,jk->akj", SVt, diag_vecs, optimize=True)
             else:
-                cores[k + 1] = np.tensordot(SVt, G_next, axes=(1, 0))
+                G_curr = np.tensordot(SVt, G_next, axes=(1, 0))
         else:
-            cores[k + 1] = np.tensordot(SVt, G_next, axes=(1, 0))
-        # result shape in all cases: (r_new, n_{k+1}, r_{k+1})
+            G_curr = np.tensordot(SVt, G_next, axes=(1, 0))
 
-    # ------------------------------------------------------------------
     # SVD of the final core G^(p)
-    # ------------------------------------------------------------------
-    G_last = cores[p]
-    r_last, n_last, one = G_last.shape
-
     G_last_mat = G_last.reshape(r_last, n_last)
 
     U_last, S_last, Vt_last = np.linalg.svd(G_last_mat, full_matrices=False)
@@ -321,10 +334,8 @@ def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
     S_last = S_last[:r_last_new]
     Vt_last = Vt_last[:r_last_new, :]
 
-    # ------------------------------------------------------------------
     # Push U_last * S_last into the last feature core G^(p-1)
-    # ------------------------------------------------------------------
-    G_prev = cores[p - 1]
+    G_prev = G_curr
     r_prev, n_prev, r_mid = G_prev.shape
 
     if r_mid != r_last:
@@ -335,11 +346,8 @@ def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
 
     US_last = U_last * S_last[None, :]
     G_prev_updated = np.tensordot(G_prev, US_last, axes=(2, 0))
-    # shape: (r_{p-2}, n_{p-1}, r_last_new)
 
-    # ------------------------------------------------------------------
     # Final SVD on the updated last feature core G^(p-1)
-    # ------------------------------------------------------------------
     r_prev, n_prev, r_right = G_prev_updated.shape
     A_prev = G_prev_updated.reshape(r_prev * n_prev, r_right)
 
@@ -350,23 +358,20 @@ def global_svd_tt_general(psi_tt: TT, rmax: int = None, tol: float = 0.0):
     S_prev = S_prev[:r]
     Vt_prev = Vt_prev[:r, :]
 
-    # Replace G^(p-1) by reshaped U
-    cores[p - 1] = U_prev.reshape(r_prev, n_prev, r)
+    U_cores.append(U_prev.reshape(r_prev, n_prev, r))
 
-    # ------------------------------------------------------------------
-    # Build outputs
-    # ------------------------------------------------------------------
-    U_cores = cores[:p]
+    # IMPORTANT: U_tt has open right boundary, so do not require last rank = 1
+    U_tt = TT(U_cores, require_right_rank_one=False)
     Sigma = np.diag(S_prev)
 
     Vt_combined = Vt_prev @ Vt_last
     V_core = Vt_combined.reshape(r, n_last, 1)
 
-    return U_cores, Sigma, V_core
+    return U_tt, Sigma, V_core
 
 
 
 
 
 
-    
+
