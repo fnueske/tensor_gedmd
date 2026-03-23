@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from tensor_gedmd.reps.Tensor_Train import TT
-from tensor_gedmd.algorithms.Global_SVD import global_svd_tt_general
+from tensor_gedmd.algorithms.Global_SVD import global_svd_tt_general, global_svd_tt
 
 
 def tt_to_dense(tt: TT) -> np.ndarray:
@@ -43,7 +43,7 @@ def relative_error(A, B):
 if __name__ == "__main__":
     np.random.seed(7)
 
-    # Build TT
+    # Build TT for global_svd_tt_general
     G0 = np.random.randn(1, 4, 6)
     G1 = np.random.randn(6, 5, 7)
     G2 = np.random.randn(7, 8, 1)
@@ -68,6 +68,33 @@ if __name__ == "__main__":
     err_full = relative_error(A_original, A_rec_full)
 
     print("No truncation relative error:", err_full)
+
+    # ==========================================================
+    # Additional test for global_svd_tt
+    # ==========================================================
+    m = 8
+    G0_std = np.random.randn(1, 4, 6)
+    G1_std = np.random.randn(6, 5, m)
+
+    # final core must have shape (m, m, 1)
+    G2_std = np.zeros((m, m, 1))
+    for i in range(m):
+        G2_std[i, i, 0] = 1.0
+
+    psi_tt_std = TT([G0_std, G1_std, G2_std])
+
+    A_original_std = tt_to_dense(psi_tt_std)
+
+    U_tt_std, Sigma_std, V_core_std = global_svd_tt(
+        psi_tt_std,
+        rmax=None,
+        tol=0.0,
+    )
+
+    A_rec_std = reconstruction_from_factors(U_tt_std, Sigma_std, V_core_std)
+    err_std = relative_error(A_original_std, A_rec_std)
+
+    print("global_svd_tt no truncation relative error:", err_std)
 
     # ==========================================================
     # 1) Truncation by rank
@@ -142,4 +169,6 @@ if __name__ == "__main__":
     plt.title("Retained rank vs tolerance")
     plt.grid(True)
     plt.show()
+
+
 
