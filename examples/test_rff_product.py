@@ -58,9 +58,3 @@ def test_product_basis_with_rff():
 if __name__ == "__main__":
     test_product_basis_with_rff()
     
-
-
-
-
-
-
