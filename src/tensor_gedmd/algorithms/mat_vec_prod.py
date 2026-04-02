@@ -6,8 +6,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from tensor_gedmd.algorithms.Util import truncate_tt_core_cur
-from tensor_gedmd.reps.Tensor_Train import TT
+from tensor_gedmd.algorithms.util import truncate_tt_core_cur
+from tensor_gedmd.reps.tensor_train import TT
 
 
 # ======================================================================================

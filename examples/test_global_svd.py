@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from tensor_gedmd.reps.Tensor_Train import TT
+from tensor_gedmd.reps.tensor_train import TT
 from tensor_gedmd.algorithms.global_svd import global_svd_tt, global_svd_data_tensor
 
 

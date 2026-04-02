@@ -3,9 +3,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from tensor_gedmd.algorithms.Stiffness_tt import TgStiffnessOperator
+from tensor_gedmd.algorithms.stiffness_tt import TgStiffnessOperator
 from tensor_gedmd.basis_sets.random_fourier_features import RandomFourierFeatures
-from tensor_gedmd.reps.Tensor_Train import TT
+from tensor_gedmd.reps.tensor_train import TT
 
 
 def make_local_rff_data():

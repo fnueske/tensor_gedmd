@@ -1,7 +1,7 @@
 import numpy as np
 
-from tensor_gedmd.reps.Tensor_Train import TT
-from tensor_gedmd.algorithms.Util import _truncate_rank
+from tensor_gedmd.reps.tensor_train import TT
+from tensor_gedmd.algorithms.util import _truncate_rank
 
 
 def global_svd_data_tensor(

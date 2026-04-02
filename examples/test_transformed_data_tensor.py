@@ -1,7 +1,7 @@
 import numpy as np
 
-from tensor_gedmd.reps.Tensor_Train import TT
-from tensor_gedmd.algorithms.Tranformed_data_tensor import Transformed_Data_Tensor_TT
+from tensor_gedmd.reps.tensor_train import TT
+from tensor_gedmd.algorithms.transformed_data_tensor import Transformed_Data_Tensor_TT
 
 
 def main():

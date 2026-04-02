@@ -5,7 +5,7 @@ from typing import List, Sequence
 
 import numpy as np
 
-from tensor_gedmd.reps.Tensor_Train import TT
+from tensor_gedmd.reps.tensor_train import TT
 
 
 ArrayLikeSequence = Sequence[np.ndarray]

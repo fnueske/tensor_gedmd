@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import pytest
 
-from tensor_gedmd.algorithms.Mat_vec_prod import (
+from tensor_gedmd.algorithms.mat_vec_prod import (
     TTInnerProductMixin,
     extract_tt_column,
     make_A_mv,
