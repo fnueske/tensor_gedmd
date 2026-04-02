@@ -10,12 +10,14 @@ def main():
     # -------------------------------------------------
     # Example feature maps
     # psi_j shape = (n_j, m)
+    # psi is 1-based indexing
     # -------------------------------------------------
     m = 5
     psi = {
         1: np.random.randn(3, m),
         2: np.random.randn(4, m),
         3: np.random.randn(2, m),
+        4: np.random.randn(5, m),
     }
 
     # -------------------------------------------------
@@ -29,10 +31,21 @@ def main():
     print()
 
     # -------------------------------------------------
-    # Core shapes
+    # Core info (0-based indexing)
     # -------------------------------------------------
+    print("Number of TT cores:", len(cores))
     print("Core shapes:")
-    print(builder.core_shapes())
+
+    for i, core in enumerate(cores):
+        if i == 0:
+            name = "First core"
+        elif i == len(cores) - 1:
+            name = "Last core"
+        else:
+            name = "Middle core"
+
+        print(f"Core {i} ({name}) shape = {core.shape}")
+
     print()
 
     # -------------------------------------------------
@@ -70,3 +83,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+

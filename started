@@ -1,0 +1,1844 @@
+Script started on Mon Mar 30 11:11:29 2026
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hpython3 -m pip install ipykernel jupyter[31D-version                       [23D[17DPYTHONPATH=src python examples/test_global_svd.py[49Dgit branch                                       [39Dpush  commit -m "change global_svd and test example and add new file"[K[A[55Cadd .[K[1B[K[A[62Cstatus[10DPYTHONPATH=src python examples/test_global_svd.py[49Dpython [24P[18C                        [24D[18DLS_3d_edmd_ppca[3C[25Dls                       [23Dcd Desktop/code[12D..          [10Dls ~ cd Desktop/code[12Ddocuments   [12Dpython LS_3d_edmd_ppca.py[25DPYTHONPATH=src python examples/test_global_svd.py                                             P  [7mPYTHONPATH=src python examples/test_Mat-vec_prod.py [27m[52D[27mP[27mY[27mT[27mH[27mO[27mN[27mP[27mA[27mT[27mH[27m=[27ms[27mr[27mc[27m [27mp[27my[27mt[27mh[27mo[27mn[27m [27me[27mx[27ma[27mm[27mp[27ml[27me[27ms[27m/[27mt[27me[27ms[27mt[27m_[27mM[27ma[27mt[27m-[27mv[27me[27mc[27m_[27mp[27mr[27mo[27md[27m.[27mp[27my[27m [?2004l[1Bscript started
+
+============================================================
+DEMO 1: GENERAL vs DENSE (4 CORES)
+============================================================
+
+=== GENERAL RESULT ===
+[[[[ -9.89856335   4.43955374]
+   [ -5.04588928   4.24644635]
+   [  6.56070597  -6.18736839]]
+
+  [[-12.68900018   9.62344483]
+   [ -1.43413117  -8.50788285]
+   [  5.16192045  -4.13376233]]]
+
+
+ [[[-30.53550281  13.7248317 ]
+   [-18.03794814  17.62199204]
+   [ 13.63682315 -15.65761813]]
+
+  [[-43.96199913  32.66917135]
+   [ -3.69900367 -23.15837735]
+   [  6.83124039  -8.25507502]]]]
+
+=== DENSE REFERENCE ===
+[[[[ -9.89856335   4.43955374]
+   [ -5.04588928   4.24644635]
+   [  6.56070597  -6.18736839]]
+
+  [[-12.68900018   9.62344483]
+   [ -1.43413117  -8.50788285]
+   [  5.16192045  -4.13376233]]]
+
+
+ [[[-30.53550281  13.7248317 ]
+   [-18.03794814  17.62199204]
+   [ 13.63682315 -15.65761813]]
+
+  [[-43.96199913  32.66917135]
+   [ -3.69900367 -23.15837735]
+   [  6.83124039  -8.25507502]]]]
+
+=== CHECK ===
+general == dense: True
+
+=== DOT PRODUCT / NORM ===
+<y, y> = 6466.857889411398
+||y||   = 80.41677616897732
+
+============================================================
+DEMO 2: PREPARE BLOCKS FOR 4-CORE MIDDLE PAIR
+============================================================
+prepared.m      = 2
+prepared.n      = 3
+prepared.BT00.shape = (2, 3, 3)
+prepared.BT11.shape = (2, 3, 3)
+prepared.BT01.shape = (2, 3, 3)
+prepared.idx00 = [0 1]
+prepared.idx11 = [0 1]
+prepared.idx01 = [0 1]
+
+============================================================
+DEMO 3: GENERAL TT MAT-VEC (4 CORES)
+============================================================
+
+=== GENERAL TT MAT-VEC ===
+TT cores of result:
+Core 0 shape: (1, 2, 4)
+Core 1 shape: (4, 2, 4)
+Core 2 shape: (4, 3, 4)
+Core 3 shape: (4, 2, 1)
+
+Dense result:
+[[[[ -9.89856335   4.43955374]
+   [ -5.04588928   4.24644635]
+   [  6.56070597  -6.18736839]]
+
+  [[-12.68900018   9.62344483]
+   [ -1.43413117  -8.50788285]
+   [  5.16192045  -4.13376233]]]
+
+
+ [[[-30.53550281  13.7248317 ]
+   [-18.03794814  17.62199204]
+   [ 13.63682315 -15.65761813]]
+
+  [[-43.96199913  32.66917135]
+   [ -3.69900367 -23.15837735]
+   [  6.83124039  -8.25507502]]]]
+
+Dense matrix:
+[[ 1.11143776e-01  9.01327117e-02 -1.42779338e-01 -2.09725983e-01
+  -5.99801396e-02 -4.06833800e-02 -9.03603379e-03 -5.64479140e-02
+   1.66908055e-01  1.62475297e-01 -5.07804027e-01 -8.93043480e-01
+  -7.39205347e-01 -5.73276171e-01  6.66319487e-01  8.36669251e-01]
+ [ 4.47676091e-03 -6.91903286e-02  1.77572591e-01  3.30484592e-02
+  -1.79459988e-02  4.20695146e-02  9.54955413e-02 -2.35712945e-02
+  -4.62031096e-02 -8.77852770e-02  9.18695877e-01  3.00808258e-02
+  -8.08789486e-02  4.75742659e-01 -5.51427010e-01 -2.38678027e-01]
+ [ 2.80600350e-01  8.52422674e-02 -2.53913280e-01 -2.43527029e-01
+   4.11107796e-01  1.48442025e-01 -7.95519810e-02 -1.08060969e-01
+   2.33849752e+00  7.90670921e-01 -1.11940621e+00 -1.18186475e+00
+  -1.51111682e-02  7.29165775e-02  9.76055701e-01  8.31608342e-01]
+ [ 2.89029481e-01 -2.59271129e-01  6.31786509e-02  1.35710912e-01
+   3.77491853e-01 -3.65858363e-01  8.17807468e-02  2.36390994e-02
+   2.25209610e+00 -2.11303023e+00  4.89779141e-01  5.33956058e-01
+  -1.66822870e-01  6.00319988e-02 -3.88836333e-02 -5.83806614e-01]
+ [-5.12633724e-02 -1.90394631e-02 -3.13532697e-01 -3.84469004e-01
+  -2.49281530e-02 -3.81139092e-02 -3.98089251e-01 -4.93092742e-01
+  -2.56219520e-01 -1.93499800e-01 -2.40415390e+00 -2.96491322e+00
+   1.67880075e-01 -3.26027339e-02  2.18497395e-01  2.51688017e-01]
+ [-4.60385031e-02  4.53063036e-02  2.41476082e-01  1.17789269e-01
+   3.39250024e-02  4.87996398e-03  3.16233235e-01  1.46621686e-01
+  -3.81939366e-02  1.67993971e-01  1.88445798e+00  8.93203075e-01
+   3.36075706e-01 -2.04811384e-01 -1.36581069e-01 -9.17413370e-02]
+ [-2.03147417e-01 -1.47577018e-01  7.52613905e-02  1.74135723e-02
+   5.11576940e-02  4.49205296e-02 -1.02867049e-01 -1.69729949e-01
+  -2.44879666e+00 -1.88096299e+00  2.01096332e+00  2.38471975e+00
+  -9.03261555e-01 -6.76204517e-01  5.51296982e-01  5.04332660e-01]
+ [-4.16837692e-02  1.36669006e-01  8.81575527e-02 -7.27798285e-02
+  -4.64077244e-03 -2.98061254e-02  1.64292116e-01  1.27364218e-02
+  -3.03357496e-01  1.58680275e+00 -1.39029475e+00 -8.03764056e-01
+  -1.46255493e-01  5.95772038e-01 -8.95294943e-02 -3.09167030e-01]
+ [ 7.00618128e-01  2.63646760e-01 -3.10178676e-03 -7.14936282e-02
+   3.71895512e-01  1.23139940e-01 -2.10328109e-01 -2.15430721e-01
+   1.23317284e+00  6.85110035e-01  2.73937041e+00  2.20860629e+00
+   1.69944452e+00  6.82904135e-01  5.31274394e-01  2.84823657e-01]
+ [ 6.22508463e-01 -6.17161654e-01  1.34488370e-01 -3.90690161e-02
+   3.63232622e-01 -3.37585580e-01  7.90815645e-02  1.04268897e-01
+   6.64284770e-01 -9.54883573e-01  1.35518917e-01 -1.71300926e+00
+   1.42529587e+00 -1.47121708e+00  3.06355311e-01 -4.17524985e-01]
+ [-1.97542961e-02 -6.95834051e-02 -6.50679578e-01 -8.08543565e-01
+  -4.62900712e-02 -2.96437396e-02 -3.89105052e-01 -4.79269587e-01
+   4.36170666e-01 -2.18386570e-01 -5.70250882e-01 -7.64342419e-01
+   4.45268688e-02 -1.87610989e-01 -1.46543705e+00 -1.83191428e+00]
+ [ 1.03735366e-01 -1.95399994e-02  5.21920591e-01  2.38120531e-01
+  -1.72727956e-02  3.35099456e-02  3.03837222e-01  1.44914499e-01
+   1.13404440e+00 -6.11580961e-01  5.66187246e-01  1.75555403e-01
+   4.38391226e-01 -1.60696462e-01  1.19680372e+00  5.29782852e-01]
+ [-3.70237578e-01 -3.07263018e-01  5.51526991e-01  8.48196411e-01
+   3.67748891e-01  2.68035973e-01 -1.45802835e-01 -5.03608976e-02
+  -3.66257090e-02  5.10945052e-02 -8.27008428e-01 -1.65313423e+00
+  -1.91412207e+00 -1.51247862e+00  2.02849892e+00  2.76374586e+00]
+ [-1.21960257e-03  2.26313359e-01 -7.60217888e-01 -1.05031865e-01
+   7.37336426e-02 -2.46880638e-01 -1.38340525e-01  1.31113111e-01
+  -1.59152028e-01  7.08251504e-02  1.88400590e+00 -6.91310647e-02
+  -1.54750745e-01  1.21524917e+00 -2.10151866e+00 -5.97843687e-01]
+ [-1.43072606e+00 -4.55401232e-01  1.03678844e+00  1.02238509e+00
+  -1.20582679e+00 -4.55674564e-01 -1.84368219e-02  1.02826386e-01
+   5.61897740e+00  1.94610180e+00 -2.11525967e+00 -2.35122592e+00
+  -2.01976772e+00 -4.95805925e-01  3.28998498e+00  2.99659078e+00]
+ [-1.43317576e+00  1.30962846e+00 -3.12628495e-01 -5.37493403e-01
+  -1.06765627e+00  1.06105257e+00 -2.30590026e-01  8.14834588e-02
+   5.32108170e+00 -5.04972130e+00  1.15566922e+00  9.38873432e-01
+  -2.31027263e+00  1.93624074e+00 -5.08674148e-01 -1.85282268e+00]
+ [ 2.17138930e-01  1.06088958e-01  1.54462048e+00  1.89844109e+00
+   2.99197078e-02  1.20590065e-01  1.11489729e+00  1.38586982e+00
+  -5.17084804e-01 -4.85017587e-01 -5.65639053e+00 -6.98625967e+00
+   6.19889098e-01  8.59496079e-02  2.56316025e+00  3.11838902e+00]
+ [ 1.45355755e-01 -1.76783484e-01 -1.19812729e+00 -5.77702355e-01
+  -1.86779266e-01  3.86296073e-02 -8.95219346e-01 -4.07717118e-01
+   1.07357974e-01  2.82858516e-01  4.45423857e+00  2.09522599e+00
+   8.38276347e-01 -6.33613501e-01 -1.92592184e+00 -9.77609702e-01]
+ [ 1.23134804e+00  9.20913242e-01 -7.41749551e-01 -6.68224634e-01
+   8.31570283e-02  4.27656808e-02  1.60065755e-01  3.68969023e-01
+  -6.31962357e+00 -4.89486873e+00  5.62953160e+00  7.02089513e+00
+  -2.93672573e+00 -2.23031883e+00  2.13654018e+00  2.31779908e+00]
+ [ 2.01145444e-01 -8.12708884e-01  1.00287214e-01  4.22116440e-01
+   5.14957879e-02 -6.64319450e-02 -4.60286837e-01  4.25102485e-02
+  -7.03533387e-01  4.07090498e+00 -4.56541983e+00 -2.04497188e+00
+  -4.13431510e-01  1.91809318e+00 -1.05589978e+00 -9.82247484e-01]
+ [-2.38070775e+00 -9.53067816e-01 -6.99612065e-01 -3.61039324e-01
+  -1.53403554e+00 -5.39038103e-01  4.81463755e-01  5.60241429e-01
+   3.08454045e-01  7.74652876e-01  8.17601312e+00  6.92328318e+00
+   3.27658044e+00  1.44300296e+00  2.59307622e+00  1.88336216e+00]
+ [-2.00367554e+00  2.06312661e+00 -4.30810875e-01  5.58161223e-01
+  -1.43761520e+00  1.37402645e+00 -3.11968766e-01 -1.98800826e-01
+  -1.01117511e+00  1.19741824e-01 -2.42275338e-01 -4.91571828e+00
+   2.50145066e+00 -2.76145391e+00  5.32824845e-01 -1.74474130e+00]
+ [-5.47180940e-02  2.61259658e-01  2.06224381e+00  2.57699449e+00
+   1.24694211e-01  1.35769802e-01  1.52413355e+00  1.88427030e+00
+   1.39432608e+00 -3.16373201e-01  1.42663965e+00  1.60670018e+00
+   3.55007639e-01 -4.16536237e-01 -2.49676127e+00 -3.15546408e+00]
+ [-5.98658285e-01  2.15729265e-01 -1.68230294e+00 -7.46119923e-01
+  -6.25947325e-02 -5.70312816e-02 -1.20372048e+00 -5.63496410e-01
+   2.88024647e+00 -1.72815783e+00 -8.20254619e-01 -6.20794060e-01
+   1.38902172e+00 -6.39710207e-01  2.10603309e+00  8.82231387e-01]]
+
+Dense vector:
+[ 0.45239547  0.04581807  0.86721927  0.70074901 -1.46519583 -7.27731338
+ -0.89812308  1.9587136  -1.23842832 -1.60723525 -1.976873   -1.03941184
+  1.83677022 11.95604309  0.36657708 -4.13585545]
+
+Dense Mx:
+[ -9.89856335   4.43955374  -5.04588928   4.24644635   6.56070597
+  -6.18736839 -12.68900018   9.62344483  -1.43413117  -8.50788285
+   5.16192045  -4.13376233 -30.53550281  13.7248317  -18.03794814
+  17.62199204  13.63682315 -15.65761813 -43.96199913  32.66917135
+  -3.69900367 -23.15837735   6.83124039  -8.25507502]
+
+=== DOT PRODUCT ===
+Inner product <y,y>: 6466.857889411398
+Norm: 80.41677616897732
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+============================================================
+DEMO 1: GENERAL vs DENSE (4 CORES)
+============================================================
+
+=== GENERAL RESULT ===
+[[[[ -9.89856335   4.43955374]
+   [ -5.04588928   4.24644635]
+   [  6.56070597  -6.18736839]]
+
+  [[-12.68900018   9.62344483]
+   [ -1.43413117  -8.50788285]
+   [  5.16192045  -4.13376233]]]
+
+
+ [[[-30.53550281  13.7248317 ]
+   [-18.03794814  17.62199204]
+   [ 13.63682315 -15.65761813]]
+
+  [[-43.96199913  32.66917135]
+   [ -3.69900367 -23.15837735]
+   [  6.83124039  -8.25507502]]]]
+
+=== DENSE REFERENCE ===
+[[[[ -9.89856335   4.43955374]
+   [ -5.04588928   4.24644635]
+   [  6.56070597  -6.18736839]]
+
+  [[-12.68900018   9.62344483]
+   [ -1.43413117  -8.50788285]
+   [  5.16192045  -4.13376233]]]
+
+
+ [[[-30.53550281  13.7248317 ]
+   [-18.03794814  17.62199204]
+   [ 13.63682315 -15.65761813]]
+
+  [[-43.96199913  32.66917135]
+   [ -3.69900367 -23.15837735]
+   [  6.83124039  -8.25507502]]]]
+
+=== CHECK ===
+general == dense: True
+
+=== DOT PRODUCT / NORM ===
+<y, y> = 6466.857889411398
+||y||   = 80.41677616897732
+
+============================================================
+DEMO 2: PREPARE BLOCKS FOR 4-CORE MIDDLE PAIR
+============================================================
+Traceback (most recent call last):
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_Mat-vec_prod.py", line 678, in <module>
+    main()
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_Mat-vec_prod.py", line 672, in main
+    demo_prepare_blocks_4cores()
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_Mat-vec_prod.py", line 157, in demo_prepare_blocks_4cores
+    prepared = prepare_blocks(blocks)
+               ^^^^^^^^^^^^^^^^^^^^^^
+TypeError: prepare_blocks() missing 1 required positional argument: 'm'
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+============================================================
+DEMO: STRUCTURED SHAPES
+============================================================
+
+Matrix core shapes:
+M[0].shape = (1, 3, 3, 4)
+M[1].shape = (4, 3, 3, 4)
+M[2].shape = (4, 3, 3, 4)
+M[3].shape = (4, 3, 3, 1)
+
+Vector core shapes:
+x[0].shape = (1, 3, 5)
+x[1].shape = (5, 3, 5)
+x[2].shape = (5, 3, 5)
+x[3].shape = (5, 3, 1)
+
+Result core shapes:
+y[0].shape = (1, 3, 3)
+y[1].shape = (3, 3, 9)
+y[2].shape = (9, 3, 27)
+y[3].shape = (27, 3, 1)
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+============================================================
+DEMO: GENERAL VS STRUCTURED MAT-VEC
+============================================================
+
+Matrix core shapes:
+M[0].shape = (1, 3, 3, 4)
+M[1].shape = (4, 3, 3, 4)
+M[2].shape = (4, 3, 3, 4)
+M[3].shape = (4, 3, 3, 1)
+
+Vector core shapes:
+x[0].shape = (1, 3, 5)
+x[1].shape = (5, 3, 5)
+x[2].shape = (5, 3, 5)
+x[3].shape = (5, 3, 1)
+
+General result core shapes:
+y_general[0].shape = (1, 3, 20)
+y_general[1].shape = (20, 3, 20)
+y_general[2].shape = (20, 3, 20)
+y_general[3].shape = (20, 3, 1)
+
+Structured result core shapes:
+y_struct[0].shape = (1, 3, 3)
+y_struct[1].shape = (3, 3, 9)
+y_struct[2].shape = (9, 3, 27)
+y_struct[3].shape = (27, 3, 1)
+
+Errors:
+||general - ref||   = 7.799207937474345e-13
+||structured - ref|| = 2484.8636668077024
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+============================================================
+DEMO: GENERAL VS STRUCTURED MAT-VEC
+============================================================
+
+Matrix core shapes:
+M[0].shape = (1, 3, 3, 4)
+M[1].shape = (4, 3, 3, 4)
+M[2].shape = (4, 3, 3, 4)
+M[3].shape = (4, 3, 3, 1)
+
+Vector core shapes:
+x[0].shape = (1, 3, 5)
+x[1].shape = (5, 3, 5)
+x[2].shape = (5, 3, 5)
+x[3].shape = (5, 3, 1)
+
+General result core shapes:
+y_general[0].shape = (1, 3, 20)
+y_general[1].shape = (20, 3, 20)
+y_general[2].shape = (20, 3, 20)
+y_general[3].shape = (20, 3, 1)
+
+Structured result core shapes:
+y_struct[0].shape = (1, 3, 20)
+y_struct[1].shape = (20, 3, 20)
+y_struct[2].shape = (20, 3, 20)
+y_struct[3].shape = (20, 3, 1)
+
+Errors:
+||general - ref||       = 7.799207937474345e-13
+||structured - ref||    = 1705.3954054309147
+||structured - general|| = 1705.3954054309145
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004h[?2004l
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+============================================================
+DEMO 1: GENERAL vs CSR_PREPARED vs DENSE
+============================================================
+
+=== GENERAL RESULT ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== CSR_PREPARED RESULT ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== DENSE REFERENCE ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== CHECKS ===
+general == dense     : True
+csr_prepared == dense: True
+general == csr       : True
+
+=== DOT PRODUCT / NORM ON CSR RESULT ===
+<y_csr, y_csr> = 11.073531786324661
+||y_csr||      = 3.3276916603442483
+
+============================================================
+DEMO 2: GENERAL TT MAT-VEC
+============================================================
+
+=== GENERAL TT MAT-VEC ===
+TT cores of result:
+Core 0 shape: (1, 2, 4)
+Core 1 shape: (4, 3, 1)
+
+Dense result:
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+Dense matrix:
+[[ 0.07611011 -0.06236564 -0.58138419 -0.8872195 ]
+ [-0.00646518  0.04698071 -0.45625191 -0.00671383]
+ [-0.34670503 -0.16522981 -1.44582228 -0.03075936]
+ [-0.07354582  0.41306327 -2.09764932 -2.34362613]
+ [ 0.13706768 -0.13650963 -1.32820725 -0.24567278]
+ [ 1.39429134  0.49416767 -2.64199279  0.70204023]]
+
+Dense vector:
+[-1.1320918  -1.2715879  -0.86233103 -0.38653223]
+
+Dense Mx:
+[ 0.83742433  0.34361436  1.86127304  2.27276949  1.25872556 -0.19993225]
+
+=== DOT PRODUCT ===
+Inner product <y,y>: 11.073531786324656
+Norm: 3.327691660344248
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+============================================================
+DEMO 1: GENERAL vs CSR_PREPARED vs DENSE
+============================================================
+
+=== GENERAL RESULT ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== CSR_PREPARED RESULT ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== DENSE REFERENCE ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== CHECKS ===
+general == dense     : True
+csr_prepared == dense: True
+general == csr       : True
+
+=== DOT PRODUCT / NORM ON CSR RESULT ===
+<y_csr, y_csr> = 11.073531786324658
+||y_csr||      = 3.327691660344248
+
+============================================================
+DEMO 2: GENERAL TT MAT-VEC
+============================================================
+
+=== GENERAL TT MAT-VEC ===
+TT cores of result:
+Core 0 shape: (1, 2, 4)
+Core 1 shape: (4, 3, 1)
+
+Dense result:
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+Dense matrix:
+[[ 0.07611011 -0.06236564 -0.58138419 -0.8872195 ]
+ [-0.00646518  0.04698071 -0.45625191 -0.00671383]
+ [-0.34670503 -0.16522981 -1.44582228 -0.03075936]
+ [-0.07354582  0.41306327 -2.09764932 -2.34362613]
+ [ 0.13706768 -0.13650963 -1.32820725 -0.24567278]
+ [ 1.39429134  0.49416767 -2.64199279  0.70204023]]
+
+Dense vector:
+[-1.1320918  -1.2715879  -0.86233103 -0.38653223]
+
+Dense Mx:
+[ 0.83742433  0.34361436  1.86127304  2.27276949  1.25872556 -0.19993225]
+
+=== DOT PRODUCT ===
+Inner product <y,y>: 11.073531786324656
+Norm: 3.327691660344248
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+============================================================
+DEMO 1: GENERAL vs CSR_PREPARED vs DENSE
+============================================================
+
+=== GENERAL RESULT ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== CSR_PREPARED RESULT ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== DENSE REFERENCE ===
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+=== CHECKS ===
+general == dense     : True
+csr_prepared == dense: True
+general == csr       : True
+
+=== DOT PRODUCT / NORM ON CSR RESULT ===
+<y_csr, y_csr> = 11.073531786324647
+||y_csr||      = 3.3276916603442466
+
+============================================================
+DEMO 2: GENERAL TT MAT-VEC
+============================================================
+
+=== GENERAL TT MAT-VEC ===
+TT cores of result:
+Core 0 shape: (1, 2, 4)
+Core 1 shape: (4, 3, 1)
+
+Dense result:
+[[ 0.83742433  0.34361436  1.86127304]
+ [ 2.27276949  1.25872556 -0.19993225]]
+
+Dense matrix:
+[[ 0.07611011 -0.06236564 -0.58138419 -0.8872195 ]
+ [-0.00646518  0.04698071 -0.45625191 -0.00671383]
+ [-0.34670503 -0.16522981 -1.44582228 -0.03075936]
+ [-0.07354582  0.41306327 -2.09764932 -2.34362613]
+ [ 0.13706768 -0.13650963 -1.32820725 -0.24567278]
+ [ 1.39429134  0.49416767 -2.64199279  0.70204023]]
+
+Dense vector:
+[-1.1320918  -1.2715879  -0.86233103 -0.38653223]
+
+Dense Mx:
+[ 0.83742433  0.34361436  1.86127304  2.27276949  1.25872556 -0.19993225]
+
+=== DOT PRODUCT ===
+Inner product <y,y>: 11.073531786324656
+Norm: 3.327691660344248
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004h[7mpython test_mat_vec_prod.py[27m[27D[27mp[27my[27mt[27mh[27mo[27mn[27m [27mt[27me[27ms[27mt[27m_[27mm[27ma[27mt[27m_[27mv[27me[27mc[27m_[27mp[27mr[27mo[27md[27m.[27mp[27my[?2004l
+python: can't open file '/Users/minakshi/Desktop/Project/tensor_gedmd/test_mat_vec_prod.py': [Errno 2] No such file or directory
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hpython test_mat_vec_prod.py[?2004l
+python: can't open file '/Users/minakshi/Desktop/Project/tensor_gedmd/test_mat_vec_prod.py': [Errno 2] No such file or directory
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hpython test_mat_vec_prod.py[27DPYTHONPATH=src python examples/test_Mat-vec_prod.py [?2004l
+script started
+
+======================================================================
+DEMO 1: 4-CORE GENERAL TT MAT-VEC vs DENSE
+======================================================================
+
+Output dims: [2, 3, 2, 2]
+Input dims : [2, 2, 3, 2]
+
+Dense reference norm      : 98.6373126505456
+TT result norm            : 98.6373126505456
+Absolute error norm       : 1.510719433388457e-14
+Relative error norm       : 1.531590219555825e-16
+allclose                  : True
+
+TT inner product / norm checks:
+<y_tt, y_tt>              : 9729.31944692148
+tt_norm(y_tt)             : 98.63731265054558
+dense ||y_tt||            : 98.6373126505456
+
+======================================================================
+DEMO 2: make_A_mv(use_general=True) WITH 4 CORES
+======================================================================
+
+Dense reference norm      : 12.18577441180921
+TT result norm            : 12.185774411809206
+Absolute error norm       : 4.0488193226718375e-15
+Relative error norm       : 3.3225785952086353e-16
+allclose                  : True
+
+======================================================================
+DEMO 3: SPECIALIZED ROUTINE FOR d=2
+======================================================================
+
+General norm              : 2.4517178008025358
+Specialized norm          : 2.451717800802536
+Absolute error norm       : 5.4672143489065705e-16
+Relative error norm       : 2.229952544749218e-16
+allclose                  : True
+
+Done.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_Mat-vec_prod.py [52Dpython test_mat_[24P[12C                        [25D[27DPYTHONPATH=src python examples/test_Mat-vec_prod.py                stifness_tt.pu y[?2004l
+============================================================
+TT STIFFNESS OPERATOR DEMO
+============================================================
+
+TT object:
+TT(operator, order=3, row_dims=[2, 2, 2], col_dims=[2, 2, 2], ranks=[1, 8, 8, 1], require_right_rank_one=True)
+
+TT ranks:
+[1, 8, 8, 1]
+
+Core shapes:
+core[0].shape = (1, 2, 2, 8)
+core[1].shape = (8, 2, 2, 8)
+core[2].shape = (8, 2, 2, 1)
+
+core[0] =
+[[[[-0.25       -0.         -0.24013262 -0.00986738 -0.21208834
+    -0.03791166 -0.17029472 -0.07970528]
+   [-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]]
+
+  [[-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]
+   [-0.22816695 -0.08733219 -0.14624589 -0.41501643 -0.05143736
+    -0.79425056 -0.00125094 -0.99499625]]]]
+
+core[1] =
+[[[[ 0.81857557  0.26125118  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.34784991  3.15640641  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.81857557  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.34784991  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.60461933  0.56934816  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.03596364  4.66593596  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.60461933  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.03596364  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.36701806
+     0.91149399  0.          0.        ]
+   [ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]
+   [ 0.          0.          0.          0.          0.0608275
+     4.54559492  0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.36701806  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+     0.0608275   0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.15947206  1.21036023]
+   [ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]
+   [ 0.          0.          0.          0.          0.
+     0.          0.40439783  2.88271451]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.          0.15947206]
+   [ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]
+   [ 0.          0.          0.          0.          0.
+     0.          0.          0.40439783]]]]
+
+core[2] =
+[[[[ 0.04553322]
+   [ 0.25326521]]
+
+  [[ 0.25326521]
+   [ 1.40871359]]]
+
+
+ [[[ 0.92885434]
+   [ 0.72456848]]
+
+  [[ 0.72456848]
+   [ 0.56521185]]]
+
+
+ [[[ 0.11122001]
+   [ 0.52943394]]
+
+  [[ 0.52943394]
+   [ 2.52023262]]]
+
+
+ [[[ 0.82621873]
+   [ 0.42842134]]
+
+  [[ 0.42842134]
+   [ 0.22215043]]]
+
+
+ [[[ 0.19810406]
+   [ 0.79431664]]
+
+  [[ 0.79431664]
+   [ 3.18488649]]]
+
+
+ [[[ 0.69046241]
+   [ 0.10837437]]
+
+  [[ 0.10837437]
+   [ 0.01701034]]]
+
+
+ [[[ 0.2973641 ]
+   [ 0.9558897 ]]
+
+  [[ 0.9558897 ]
+   [ 3.07274863]]]
+
+
+ [[[ 0.5353686 ]
+   [-0.16624124]]
+
+  [[-0.16624124]
+   [ 0.05162079]]]]
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py[1C.py .py .py .py .py .py .py .py .py .py .py .py .py .py .py r.pya.pyn.pys.pyf.pyo.pyr.pym.pye.pyd.py_.pyd.pya.pyt.pya.py_.pyt.pye.pyn.pys.pyo.pyr.py[?2004l
+python: can't open file '/Users/minakshi/Desktop/Project/tensor_gedmd/examples/transformed_data_tensor.py': [Errno 2] No such file or directory
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/transformed_data_tensor.py[1Ctransformed_data_tensor.py[26Detransformed_data_tensor.py[26Dstransformed_data_tensor.py[26D[1Ctransformed_data_tensor.py[26D_transformed_data_tensor.py[26D[?2004l
+Builder object:
+Transformed_Data_Tensor_TT(p=4, m=5, n={1: 3, 2: 4, 3: 2, 4: 5}, normalize_first_core=True, built=True)
+
+Core shapes:
+[(1, 3, 5), (5, 2, 5), (5, 5, 1)]
+
+TT object:
+TT(tensor, order=3, mode_dims=[3, 2, 5], ranks=[1, 5, 5, 1], require_right_rank_one=True)
+TT ranks: [1, 5, 5, 1]
+Mode sizes: [3, 2, 5]
+
+Dense tensor shape: (3, 2, 5)
+
+Checking sample tensors:
+Traceback (most recent call last):
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_transformed_data_tensor.py", line 73, in <module>
+    main()
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_transformed_data_tensor.py", line 65, in main
+    err = np.linalg.norm(sample_tensor - dense_slice)
+                         ~~~~~~~~~~~~~~^~~~~~~~~~~~~
+ValueError: operands could not be broadcast together with shapes (3,4,2,5) (3,2) 
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_transformed_data_tensor.py[?2004l
+Builder object:
+Transformed_Data_Tensor_TT(p=4, m=5, n={1: 3, 2: 4, 3: 2, 4: 5}, normalize_first_core=True, built=True)
+
+Core shapes:
+[(1, 3, 5), (5, 4, 5), (5, 2, 5), (5, 5, 5), (5, 5, 1)]
+
+TT object:
+TT(tensor, order=5, mode_dims=[3, 4, 2, 5, 5], ranks=[1, 5, 5, 5, 5, 1], require_right_rank_one=True)
+TT ranks: [1, 5, 5, 5, 5, 1]
+Mode sizes: [3, 4, 2, 5, 5]
+
+Dense tensor shape: (3, 4, 2, 5, 5)
+
+Checking sample tensors:
+Sample 0: error = 6.34e-16
+Sample 1: error = 8.83e-16
+Sample 2: error = 1.80e-16
+Sample 3: error = 9.59e-16
+Sample 4: error = 8.16e-17
+
+All tests finished.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_transformed_data_tensor.py[?2004l
+Builder object:
+Transformed_Data_Tensor_TT(p=4, m=5, n={1: 3, 2: 4, 3: 2, 4: 5}, normalize_first_core=True, built=True)
+
+Number of TT cores: 5
+Core shapes:
+Core 0 (First core) shape = (1, 3, 5)
+Core 1 (Middle core) shape = (5, 4, 5)
+Core 2 (Middle core) shape = (5, 2, 5)
+Core 3 (Middle core) shape = (5, 5, 5)
+Core 4 (Last core) shape = (5, 5, 1)
+
+TT object:
+TT(tensor, order=5, mode_dims=[3, 4, 2, 5, 5], ranks=[1, 5, 5, 5, 5, 1], require_right_rank_one=True)
+TT ranks: [1, 5, 5, 5, 5, 1]
+Mode sizes: [3, 4, 2, 5, 5]
+
+Dense tensor shape: (3, 4, 2, 5, 5)
+
+Checking sample tensors:
+Sample 0: error = 6.34e-16
+Sample 1: error = 8.83e-16
+Sample 2: error = 1.80e-16
+Sample 3: error = 9.59e-16
+Sample 4: error = 8.16e-17
+
+All tests finished.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_transformed_data_tensor.py[?2004l
+Builder object:
+Transformed_Data_Tensor_TT(p=4, m=5, n={1: 3, 2: 4, 3: 2, 4: 5}, normalize_first_core=True, built=True)
+
+Number of TT cores: 3
+Core shapes:
+Core 0 (First core) shape = (1, 3, 5)
+Core 1 (Middle core) shape = (5, 2, 5)
+Core 2 (Last core) shape = (5, 5, 1)
+
+TT object:
+TT(tensor, order=3, mode_dims=[3, 2, 5], ranks=[1, 5, 5, 1], require_right_rank_one=True)
+TT ranks: [1, 5, 5, 1]
+Mode sizes: [3, 2, 5]
+
+Dense tensor shape: (3, 2, 5)
+
+Checking sample tensors:
+Traceback (most recent call last):
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_transformed_data_tensor.py", line 85, in <module>
+    main()
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_transformed_data_tensor.py", line 77, in main
+    err = np.linalg.norm(sample_tensor - dense_slice)
+                         ~~~~~~~~~~~~~~^~~~~~~~~~~~~
+ValueError: operands could not be broadcast together with shapes (3,4,2,5) (3,2) 
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_transformed_data_tensor.py[?2004l
+Builder object:
+Transformed_Data_Tensor_TT(p=4, m=5, n={1: 3, 2: 4, 3: 2, 4: 5}, normalize_first_core=True, built=True)
+
+Number of TT cores: 5
+Core shapes:
+Core 0 (First core) shape = (1, 3, 5)
+Core 1 (Middle core) shape = (5, 4, 5)
+Core 2 (Middle core) shape = (5, 2, 5)
+Core 3 (Middle core) shape = (5, 5, 5)
+Core 4 (Last core) shape = (5, 5, 1)
+
+TT object:
+TT(tensor, order=5, mode_dims=[3, 4, 2, 5, 5], ranks=[1, 5, 5, 5, 5, 1], require_right_rank_one=True)
+TT ranks: [1, 5, 5, 5, 5, 1]
+Mode sizes: [3, 4, 2, 5, 5]
+
+Dense tensor shape: (3, 4, 2, 5, 5)
+
+Checking sample tensors:
+Sample 0: error = 6.34e-16
+Sample 1: error = 8.83e-16
+Sample 2: error = 1.80e-16
+Sample 3: error = 9.59e-16
+Sample 4: error = 8.16e-17
+
+All tests finished.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_transformed_data_tensor.py[30D[5P[25C     [25Dest_stifness_tt.py       [?2004l
+============================================================
+TT STIFFNESS OPERATOR DEMO
+============================================================
+
+TT object:
+TT(operator, order=3, row_dims=[2, 2, 2], col_dims=[2, 2, 2], ranks=[1, 8, 8, 1], require_right_rank_one=True)
+
+TT ranks:
+[1, 8, 8, 1]
+
+Core shapes:
+core[0].shape = (1, 2, 2, 8)
+core[1].shape = (8, 2, 2, 8)
+core[2].shape = (8, 2, 2, 1)
+
+core[0] =
+[[[[-0.25       -0.         -0.24013262 -0.00986738 -0.21208834
+    -0.03791166 -0.17029472 -0.07970528]
+   [-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]]
+
+  [[-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]
+   [-0.22816695 -0.08733219 -0.14624589 -0.41501643 -0.05143736
+    -0.79425056 -0.00125094 -0.99499625]]]]
+
+core[1] =
+[[[[ 0.81857557  0.26125118  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.34784991  3.15640641  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.81857557  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.34784991  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.60461933  0.56934816  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.03596364  4.66593596  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.60461933  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.03596364  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.36701806
+     0.91149399  0.          0.        ]
+   [ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]
+   [ 0.          0.          0.          0.          0.0608275
+     4.54559492  0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.36701806  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+     0.0608275   0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.15947206  1.21036023]
+   [ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]
+   [ 0.          0.          0.          0.          0.
+     0.          0.40439783  2.88271451]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.          0.15947206]
+   [ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]
+   [ 0.          0.          0.          0.          0.
+     0.          0.          0.40439783]]]]
+
+core[2] =
+[[[[ 0.04553322]
+   [ 0.25326521]]
+
+  [[ 0.25326521]
+   [ 1.40871359]]]
+
+
+ [[[ 0.92885434]
+   [ 0.72456848]]
+
+  [[ 0.72456848]
+   [ 0.56521185]]]
+
+
+ [[[ 0.11122001]
+   [ 0.52943394]]
+
+  [[ 0.52943394]
+   [ 2.52023262]]]
+
+
+ [[[ 0.82621873]
+   [ 0.42842134]]
+
+  [[ 0.42842134]
+   [ 0.22215043]]]
+
+
+ [[[ 0.19810406]
+   [ 0.79431664]]
+
+  [[ 0.79431664]
+   [ 3.18488649]]]
+
+
+ [[[ 0.69046241]
+   [ 0.10837437]]
+
+  [[ 0.10837437]
+   [ 0.01701034]]]
+
+
+ [[[ 0.2973641 ]
+   [ 0.9558897 ]]
+
+  [[ 0.9558897 ]
+   [ 3.07274863]]]
+
+
+ [[[ 0.5353686 ]
+   [-0.16624124]]
+
+  [[-0.16624124]
+   [ 0.05162079]]]]
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py[?2004l
+============================================================
+TT STIFFNESS OPERATOR DEMO
+============================================================
+
+TT object:
+TT(operator, order=3, row_dims=[2, 2, 2], col_dims=[2, 2, 2], ranks=[1, 8, 8, 1], require_right_rank_one=True)
+
+TT ranks:
+[1, 8, 8, 1]
+
+Core shapes:
+core[0].shape = (1, 2, 2, 8)
+core[1].shape = (8, 2, 2, 8)
+core[2].shape = (8, 2, 2, 1)
+
+core[0] =
+[[[[-0.25       -0.         -0.24013262 -0.00986738 -0.21208834
+    -0.03791166 -0.17029472 -0.07970528]
+   [-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]]
+
+  [[-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]
+   [-0.22816695 -0.08733219 -0.14624589 -0.41501643 -0.05143736
+    -0.79425056 -0.00125094 -0.99499625]]]]
+
+core[1] =
+[[[[0.97766824 0.00558294 0.         0.         0.         0.
+    0.         0.        ]
+   [0.84295159 0.05858205 0.         0.         0.         0.
+    0.         0.        ]]
+
+  [[0.84295159 0.05858205 0.         0.         0.         0.
+    0.         0.        ]
+   [0.72679806 0.61470436 0.         0.         0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.97766824 0.         0.         0.         0.
+    0.         0.        ]
+   [0.         0.84295159 0.         0.         0.         0.
+    0.         0.        ]]
+
+  [[0.         0.84295159 0.         0.         0.         0.
+    0.         0.        ]
+   [0.         0.72679806 0.         0.         0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.93879128 0.01530218 0.         0.
+    0.         0.        ]
+   [0.         0.         0.63946587 0.13940231 0.         0.
+    0.         0.        ]]
+
+  [[0.         0.         0.63946587 0.13940231 0.         0.
+    0.         0.        ]
+   [0.         0.         0.43557775 1.26995006 0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.93879128 0.         0.
+    0.         0.        ]
+   [0.         0.         0.         0.63946587 0.         0.
+    0.         0.        ]]
+
+  [[0.         0.         0.         0.63946587 0.         0.
+    0.         0.        ]
+   [0.         0.         0.         0.43557775 0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.         0.88242109 0.02939473
+    0.         0.        ]
+   [0.         0.         0.         0.         0.38372196 0.23473857
+    0.         0.        ]]
+
+  [[0.         0.         0.         0.         0.38372196 0.23473857
+    0.         0.        ]
+   [0.         0.         0.         0.         0.16686199 1.87456052
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.         0.         0.88242109
+    0.         0.        ]
+   [0.         0.         0.         0.         0.         0.38372196
+    0.         0.        ]]
+
+  [[0.         0.         0.         0.         0.         0.38372196
+    0.         0.        ]
+   [0.         0.         0.         0.         0.         0.16686199
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.         0.         0.
+    0.81080498 0.04729875]
+   [0.         0.         0.         0.         0.         0.
+    0.10850637 0.32384695]]
+
+  [[0.         0.         0.         0.         0.         0.
+    0.10850637 0.32384695]
+   [0.         0.         0.         0.         0.         0.
+    0.01452092 2.21732794]]]
+
+
+ [[[0.         0.         0.         0.         0.         0.
+    0.         0.81080498]
+   [0.         0.         0.         0.         0.         0.
+    0.         0.10850637]]
+
+  [[0.         0.         0.         0.         0.         0.
+    0.         0.10850637]
+   [0.         0.         0.         0.         0.         0.
+    0.         0.01452092]]]]
+
+core[2] =
+[[[[ 0.26125118]
+   [ 0.90808308]]
+
+  [[ 0.90808308]
+   [ 3.15640641]]]
+
+
+ [[[ 0.81857557]
+   [ 0.5336117 ]]
+
+  [[ 0.5336117 ]
+   [ 0.34784991]]]
+
+
+ [[[ 0.56934816]
+   [ 1.6298902 ]]
+
+  [[ 1.6298902 ]
+   [ 4.66593596]]]
+
+
+ [[[ 0.60461933]
+   [ 0.14745954]]
+
+  [[ 0.14745954]
+   [ 0.03596364]]]
+
+
+ [[[ 0.91149399]
+   [ 2.03550545]]
+
+  [[ 2.03550545]
+   [ 4.54559492]]]
+
+
+ [[[ 0.36701806]
+   [-0.14941482]]
+
+  [[-0.14941482]
+   [ 0.0608275 ]]]
+
+
+ [[[ 1.21036023]
+   [ 1.86791943]]
+
+  [[ 1.86791943]
+   [ 2.88271451]]]
+
+
+ [[[ 0.15947206]
+   [-0.25394912]]
+
+  [[-0.25394912]
+   [ 0.40439783]]]]
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py[?2004l
+============================================================
+TT STIFFNESS OPERATOR DEMO
+============================================================
+
+TT object:
+TT(operator, order=3, row_dims=[2, 2, 2], col_dims=[2, 2, 2], ranks=[1, 8, 8, 1], require_right_rank_one=True)
+
+TT ranks:
+[1, 8, 8, 1]
+
+Core shapes:
+core[0].shape = (1, 2, 2, 8)
+core[1].shape = (8, 2, 2, 8)
+core[2].shape = (8, 2, 2, 1)
+
+core[0] =
+[[[[-0.25       -0.         -0.24013262 -0.00986738 -0.21208834
+    -0.03791166 -0.17029472 -0.07970528]
+   [-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]]
+
+  [[-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]
+   [-0.22816695 -0.08733219 -0.14624589 -0.41501643 -0.05143736
+    -0.79425056 -0.00125094 -0.99499625]]]]
+
+core[1] =
+[[[[ 0.81857557  0.26125118  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.34784991  3.15640641  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.81857557  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.34784991  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.60461933  0.56934816  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.03596364  4.66593596  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.60461933  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.03596364  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.36701806
+     0.91149399  0.          0.        ]
+   [ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]
+   [ 0.          0.          0.          0.          0.0608275
+     4.54559492  0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.36701806  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+     0.0608275   0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.15947206  1.21036023]
+   [ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]
+   [ 0.          0.          0.          0.          0.
+     0.          0.40439783  2.88271451]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.          0.15947206]
+   [ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]
+   [ 0.          0.          0.          0.          0.
+     0.          0.          0.40439783]]]]
+
+core[2] =
+[[[[ 0.04553322]
+   [ 0.25326521]]
+
+  [[ 0.25326521]
+   [ 1.40871359]]]
+
+
+ [[[ 0.92885434]
+   [ 0.72456848]]
+
+  [[ 0.72456848]
+   [ 0.56521185]]]
+
+
+ [[[ 0.11122001]
+   [ 0.52943394]]
+
+  [[ 0.52943394]
+   [ 2.52023262]]]
+
+
+ [[[ 0.82621873]
+   [ 0.42842134]]
+
+  [[ 0.42842134]
+   [ 0.22215043]]]
+
+
+ [[[ 0.19810406]
+   [ 0.79431664]]
+
+  [[ 0.79431664]
+   [ 3.18488649]]]
+
+
+ [[[ 0.69046241]
+   [ 0.10837437]]
+
+  [[ 0.10837437]
+   [ 0.01701034]]]
+
+
+ [[[ 0.2973641 ]
+   [ 0.9558897 ]]
+
+  [[ 0.9558897 ]
+   [ 3.07274863]]]
+
+
+ [[[ 0.5353686 ]
+   [-0.16624124]]
+
+  [[-0.16624124]
+   [ 0.05162079]]]]
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py[?2004l
+============================================================
+TT STIFFNESS OPERATOR DEMO
+============================================================
+
+TT object:
+TT(operator, order=4, row_dims=[2, 2, 2, 2], col_dims=[2, 2, 2, 2], ranks=[1, 8, 8, 8, 1], require_right_rank_one=True)
+
+TT ranks:
+[1, 8, 8, 8, 1]
+
+Core shapes:
+core[0].shape = (1, 2, 2, 8)
+core[1].shape = (8, 2, 2, 8)
+core[2].shape = (8, 2, 2, 8)
+core[3].shape = (8, 2, 2, 1)
+
+core[0] =
+[[[[-0.25       -0.         -0.24013262 -0.00986738 -0.21208834
+    -0.03791166 -0.17029472 -0.07970528]
+   [-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]]
+
+  [[-0.23883412 -0.         -0.18739907 -0.06399315 -0.10444742
+    -0.17352625 -0.01459548 -0.28161402]
+   [-0.22816695 -0.08733219 -0.14624589 -0.41501643 -0.05143736
+    -0.79425056 -0.00125094 -0.99499625]]]]
+
+core[1] =
+[[[[0.97766824 0.00558294 0.         0.         0.         0.
+    0.         0.        ]
+   [0.84295159 0.05858205 0.         0.         0.         0.
+    0.         0.        ]]
+
+  [[0.84295159 0.05858205 0.         0.         0.         0.
+    0.         0.        ]
+   [0.72679806 0.61470436 0.         0.         0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.97766824 0.         0.         0.         0.
+    0.         0.        ]
+   [0.         0.84295159 0.         0.         0.         0.
+    0.         0.        ]]
+
+  [[0.         0.84295159 0.         0.         0.         0.
+    0.         0.        ]
+   [0.         0.72679806 0.         0.         0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.93879128 0.01530218 0.         0.
+    0.         0.        ]
+   [0.         0.         0.63946587 0.13940231 0.         0.
+    0.         0.        ]]
+
+  [[0.         0.         0.63946587 0.13940231 0.         0.
+    0.         0.        ]
+   [0.         0.         0.43557775 1.26995006 0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.93879128 0.         0.
+    0.         0.        ]
+   [0.         0.         0.         0.63946587 0.         0.
+    0.         0.        ]]
+
+  [[0.         0.         0.         0.63946587 0.         0.
+    0.         0.        ]
+   [0.         0.         0.         0.43557775 0.         0.
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.         0.88242109 0.02939473
+    0.         0.        ]
+   [0.         0.         0.         0.         0.38372196 0.23473857
+    0.         0.        ]]
+
+  [[0.         0.         0.         0.         0.38372196 0.23473857
+    0.         0.        ]
+   [0.         0.         0.         0.         0.16686199 1.87456052
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.         0.         0.88242109
+    0.         0.        ]
+   [0.         0.         0.         0.         0.         0.38372196
+    0.         0.        ]]
+
+  [[0.         0.         0.         0.         0.         0.38372196
+    0.         0.        ]
+   [0.         0.         0.         0.         0.         0.16686199
+    0.         0.        ]]]
+
+
+ [[[0.         0.         0.         0.         0.         0.
+    0.81080498 0.04729875]
+   [0.         0.         0.         0.         0.         0.
+    0.10850637 0.32384695]]
+
+  [[0.         0.         0.         0.         0.         0.
+    0.10850637 0.32384695]
+   [0.         0.         0.         0.         0.         0.
+    0.01452092 2.21732794]]]
+
+
+ [[[0.         0.         0.         0.         0.         0.
+    0.         0.81080498]
+   [0.         0.         0.         0.         0.         0.
+    0.         0.10850637]]
+
+  [[0.         0.         0.         0.         0.         0.
+    0.         0.10850637]
+   [0.         0.         0.         0.         0.         0.
+    0.         0.01452092]]]]
+
+core[2] =
+[[[[ 0.81857557  0.26125118  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.5336117   0.90808308  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.34784991  3.15640641  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.81857557  0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.5336117   0.          0.          0.
+     0.          0.          0.        ]
+   [ 0.          0.34784991  0.          0.          0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.60461933  0.56934816  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.14745954  1.6298902   0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.03596364  4.66593596  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.60461933  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]]
+
+  [[ 0.          0.          0.          0.14745954  0.
+     0.          0.          0.        ]
+   [ 0.          0.          0.          0.03596364  0.
+     0.          0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.36701806
+     0.91149399  0.          0.        ]
+   [ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.         -0.14941482
+     2.03550545  0.          0.        ]
+   [ 0.          0.          0.          0.          0.0608275
+     4.54559492  0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.36701806  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]]
+
+  [[ 0.          0.          0.          0.          0.
+    -0.14941482  0.          0.        ]
+   [ 0.          0.          0.          0.          0.
+     0.0608275   0.          0.        ]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.15947206  1.21036023]
+   [ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.         -0.25394912  1.86791943]
+   [ 0.          0.          0.          0.          0.
+     0.          0.40439783  2.88271451]]]
+
+
+ [[[ 0.          0.          0.          0.          0.
+     0.          0.          0.15947206]
+   [ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]]
+
+  [[ 0.          0.          0.          0.          0.
+     0.          0.         -0.25394912]
+   [ 0.          0.          0.          0.          0.
+     0.          0.          0.40439783]]]]
+
+core[3] =
+[[[[ 0.04553322]
+   [ 0.25326521]]
+
+  [[ 0.25326521]
+   [ 1.40871359]]]
+
+
+ [[[ 0.92885434]
+   [ 0.72456848]]
+
+  [[ 0.72456848]
+   [ 0.56521185]]]
+
+
+ [[[ 0.11122001]
+   [ 0.52943394]]
+
+  [[ 0.52943394]
+   [ 2.52023262]]]
+
+
+ [[[ 0.82621873]
+   [ 0.42842134]]
+
+  [[ 0.42842134]
+   [ 0.22215043]]]
+
+
+ [[[ 0.19810406]
+   [ 0.79431664]]
+
+  [[ 0.79431664]
+   [ 3.18488649]]]
+
+
+ [[[ 0.69046241]
+   [ 0.10837437]]
+
+  [[ 0.10837437]
+   [ 0.01701034]]]
+
+
+ [[[ 0.2973641 ]
+   [ 0.9558897 ]]
+
+  [[ 0.9558897 ]
+   [ 3.07274863]]]
+
+
+ [[[ 0.5353686 ]
+   [-0.16624124]]
+
+  [[-0.16624124]
+   [ 0.05162079]]]]
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py[?2004l
+Traceback (most recent call last):
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_stifness_tt.py", line 287, in <module>
+    A_tt = tt_to_dense(tt)
+           ^^^^^^^^^^^^^^^
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_stifness_tt.py", line 127, in tt_to_dense
+    raise AttributeError(
+AttributeError: Could not find a dense-conversion method on TT. Tried: full(), to_dense(), matricize().
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py[?2004l
+============================================================
+TT STIFFNESS OPERATOR DEMO
+============================================================
+
+TT object:
+TT(operator, order=4, row_dims=[2, 2, 2, 2], col_dims=[2, 2, 2, 2], ranks=[1, 8, 8, 8, 1], require_right_rank_one=True)
+
+TT ranks:
+[1, 8, 8, 8, 1]
+
+Core shapes:
+core[0].shape = (1, 2, 2, 8)
+core[1].shape = (8, 2, 2, 8)
+core[2].shape = (8, 2, 2, 8)
+core[3].shape = (8, 2, 2, 1)
+
+Dense reference shape: (16, 16)
+TT dense shape       : (16, 16)
+Absolute Frobenius error: 1.4967437026128531e-15
+Relative Frobenius error: 1.62638553445861e-16
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py[?2004l
+============================================================
+TT STIFFNESS OPERATOR DEMO
+============================================================
+
+TT object:
+TT(operator, order=4, row_dims=[2, 2, 2, 2], col_dims=[2, 2, 2, 2], ranks=[1, 8, 8, 8, 1], require_right_rank_one=True)
+
+TT ranks:
+[1, 8, 8, 8, 1]
+
+Core shapes:
+core[0].shape = (1, 2, 2, 8)
+core[1].shape = (8, 2, 2, 8)
+core[2].shape = (8, 2, 2, 8)
+core[3].shape = (8, 2, 2, 1)
+
+Dense reference shape: (16, 16)
+TT dense shape       : (16, 16)
+Absolute Frobenius error: 1.4967437026128531e-15
+Relative Frobenius error: 1.62638553445861e-16
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_stifness_tt.py              global_svd.py[?2004l
+Input TT: TT(tensor, order=3, mode_dims=[4, 5, 8], ranks=[1, 6, 7, 1], require_right_rank_one=True)
+No truncation relative error: 1.3579049408459314e-15
+global_svd_data_tensor no truncation relative error: 9.419729545854326e-16
+rmax=1, error=0.9431357935995702
+rmax=2, error=0.8073562946070917
+rmax=3, error=0.4831772045502513
+rmax=4, error=0.2584213596449225
+rmax=5, error=0.14342786948814054
+rmax=6, error=0.04302638657686586
+rmax=7, error=1.3579049408459314e-15
+tol=1.0e-12, rank=7, error=1.3579049408459314e-15
+tol=1.0e-11, rank=7, error=1.3579049408459314e-15
+tol=1.0e-10, rank=7, error=1.3579049408459314e-15
+tol=1.0e-09, rank=7, error=1.3579049408459314e-15
+tol=1.0e-08, rank=7, error=1.3579049408459314e-15
+tol=1.0e-07, rank=7, error=1.3579049408459314e-15
+tol=1.0e-06, rank=7, error=1.3579049408459314e-15
+tol=1.0e-05, rank=7, error=1.3579049408459314e-15
+tol=1.0e-04, rank=7, error=1.3579049408459314e-15
+tol=1.0e-03, rank=7, error=1.3579049408459314e-15
+tol=1.0e-02, rank=5, error=0.14342786948814054
+tol=1.0e-01, rank=3, error=0.46041002165965
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_global_svd.py[?2004l
+Input TT: TT(tensor, order=3, mode_dims=[4, 5, 8], ranks=[1, 6, 7, 1], require_right_rank_one=True)
+Traceback (most recent call last):
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_global_svd.py", line 60, in <module>
+    U_tt_full, Sigma_full, V_core_full = global_svd_tt(
+                                         ^^^^^^^^^^^^^^
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/src/tensor_gedmd/algorithms/global_svd.py", line 189, in global_svd_tt
+    m, p = _validate_basis_evals(basis_evals)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/src/tensor_gedmd/algorithms/global_svd.py", line 14, in _validate_basis_evals
+    raise TypeError("basis_evals must be a non-empty list of ndarrays.")
+TypeError: basis_evals must be a non-empty list of ndarrays.
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_global_svd.py[?2004l
+Basis evaluation shapes: [(8, 4), (8, 5), (8, 6)]
+global_svd_tt no truncation relative error: 1.4292248704412086e-15
+global_svd_data_tensor no truncation relative error: 1.4292248704412086e-15
+Relative difference between both reconstructions: 0.0
+[global_svd_tt] rmax=1, error=0.9018511121513066
+[global_svd_tt] rmax=2, error=0.8148549170768999
+[global_svd_tt] rmax=3, error=0.7055741517416314
+[global_svd_tt] rmax=4, error=0.5139830518450015
+[global_svd_tt] rmax=5, error=0.4459702047767291
+[global_svd_tt] rmax=6, error=0.3126217978013969
+[global_svd_tt] rmax=7, error=0.21509406678871923
+[global_svd_tt] rmax=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-12, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-11, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-10, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-09, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-08, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-07, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-06, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-05, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-04, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-03, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-02, rank=8, error=1.4292248704412086e-15
+[global_svd_tt] tol=1.0e-01, rank=5, error=0.47007006397177215
+[global_svd_data_tensor] rmax=1, error=0.9018511121513066
+[global_svd_data_tensor] rmax=2, error=0.8148549170768999
+[global_svd_data_tensor] rmax=3, error=0.7055741517416314
+[global_svd_data_tensor] rmax=4, error=0.5139830518450015
+[global_svd_data_tensor] rmax=5, error=0.4459702047767291
+[global_svd_data_tensor] rmax=6, error=0.3126217978013969
+[global_svd_data_tensor] rmax=7, error=0.21509406678871923
+[global_svd_data_tensor] rmax=8, error=1.4292248704412086e-15
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_global_svd.py[?2004l
+Basis evaluation shapes: [(8, 4), (8, 5), (8, 6)]
+Reference dense tensor shape: (4, 5, 6, 8)
+Traceback (most recent call last):
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_global_svd.py", line 150, in <module>
+    err_tt_full, rank_tt_full = run_single_test(
+                                ^^^^^^^^^^^^^^^^
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_global_svd.py", line 119, in run_single_test
+    err = relative_error(A_ref, A_rec)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/minakshi/Desktop/Project/tensor_gedmd/examples/test_global_svd.py", line 75, in relative_error
+    return np.linalg.norm(A - B) / denom
+                          ~~^~~
+ValueError: operands could not be broadcast together with shapes (4,5,6,8) (4,5,6) 
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004hPYTHONPATH=src python examples/test_global_svd.py[?2004l
+Basis evaluation shapes: [(8, 4), (8, 5), (8, 6)]
+A_ref_data shape: (4, 5, 6, 8)
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=0.0e+00, retained_rank=8, rel_error=1.429225e-15
+[global_svd_tt] U_dense shape=(4, 5, 6), Sigma shape=(6, 6), V_core shape=(6, 6, 1), A_rec shape=(4, 5, 6)
+[global_svd_tt] reference comparison skipped: A_ref shape=(4, 5, 6, 8) != A_rec shape=(4, 5, 6)
+Cannot compare both reconstructions directly: A_rec_dt.shape=(4, 5, 6, 8), A_rec_tt.shape=(4, 5, 6)
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 1), Sigma shape=(1, 1), V_core shape=(1, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=1, tol=0.0e+00, retained_rank=1, rel_error=9.018511e-01
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 2), Sigma shape=(2, 2), V_core shape=(2, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=2, tol=0.0e+00, retained_rank=2, rel_error=8.148549e-01
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 3), Sigma shape=(3, 3), V_core shape=(3, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=3, tol=0.0e+00, retained_rank=3, rel_error=7.055742e-01
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 4), Sigma shape=(4, 4), V_core shape=(4, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=4, tol=0.0e+00, retained_rank=4, rel_error=5.139831e-01
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 5), Sigma shape=(5, 5), V_core shape=(5, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=5, tol=0.0e+00, retained_rank=5, rel_error=4.459702e-01
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 6), Sigma shape=(6, 6), V_core shape=(6, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=6, tol=0.0e+00, retained_rank=6, rel_error=3.126218e-01
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 7), Sigma shape=(7, 7), V_core shape=(7, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=7, tol=0.0e+00, retained_rank=7, rel_error=2.150941e-01
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=8, tol=0.0e+00, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-12, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-11, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-10, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-09, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-08, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-07, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-06, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-05, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-04, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-03, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 8), Sigma shape=(8, 8), V_core shape=(8, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-02, retained_rank=8, rel_error=1.429225e-15
+[global_svd_data_tensor] U_dense shape=(4, 5, 6, 5), Sigma shape=(5, 5), V_core shape=(5, 8, 1), A_rec shape=(4, 5, 6, 8)
+[global_svd_data_tensor] rmax=None, tol=1.0e-01, retained_rank=5, rel_error=4.700701e-01
+[1m[7m%[27m[1m[0m                                                                                                                      [0m[27m[24m[J(base) minakshi@Minakshis-MacBook-Pro tensor_gedmd % [K[?2004h
