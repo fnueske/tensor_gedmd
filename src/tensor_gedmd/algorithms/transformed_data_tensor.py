@@ -1,9 +1,10 @@
-# -*- coding: utf-8 -*-
+
+#-*- coding: utf-8 -*-
 
 from typing import Dict, List, Mapping, Optional, Sequence, Union
 import numpy as np
 
-from tensor_gedmd.reps.Tensor_Train import TT
+from tensor_gedmd.reps.tensor_train import TT
 
 
 PsiInput = Union[Mapping[int, np.ndarray], Sequence[np.ndarray]]
