@@ -3,13 +3,14 @@ from __future__ import annotations
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
 from tensor_gedmd.algorithms.util import truncate_tt_core_cur
 from tensor_gedmd.reps.tensor_train import TT
+from tensor_gedmd.reps.stiffness_tt import TgStiffnessOperator
 from tensor_gedmd.operations import (
     TTInnerProductMixin,
     extract_tt_column,
@@ -33,6 +34,9 @@ __all__ = [
     "prepare_blocks",
     "tt_matrix_vector_product_general",
     "tt_matrix_vector_product_csr_prepared",
+    "PreparedOperator",
+    "prepare_operator",
+    "tt_matrix_vector_product",
     "make_A_mv",
     "compute_A_r",
     "TTInnerProductMixin",
@@ -430,6 +434,180 @@ def tt_matrix_vector_product_csr_prepared(
 
 
 # ======================================================================================
+# Generalized (constant + variable diffusion) banded matvec
+#
+# Same algorithmic skeleton as tt_matrix_vector_product_csr_prepared above,
+# but the rank/band structure is read directly from a TgStiffnessOperator
+# (tensor_gedmd.reps.stiffness_tt) instead of being hardcoded to rank 2 with
+# fixed 00/11/01 bands. When the operator has no Sigma, every middle
+# dimension has r_left=r_right=2 and exactly those 3 bands, so this reduces
+# to numerically the same computation as tt_matrix_vector_product_csr_prepared
+# above; with a constant or samplewise Sigma, the rank grows and additional
+# bands appear, but the (m*r_left, n, n, m*r_right) block-diagonal middle
+# core is still never materialized -- only the compact per-band (m, n, n)
+# stacks from TgStiffnessOperator.prepare_middle_site are used.
+# ======================================================================================
+
+@dataclass
+class PreparedOperator:
+    """Everything a matvec needs, prepared once from a TgStiffnessOperator."""
+
+    p: int
+    m: int
+    n: Dict[int, int]
+    first_core: np.ndarray                                    # (1, n0, n0, m*r1)
+    last_core: np.ndarray                                     # (m*r_{p-1}, n_{p-1}, n_{p-1}, 1)
+    middle_sites: List[dict] = field(default_factory=list)     # dims 1..p-2, in order
+
+
+def prepare_operator(op: TgStiffnessOperator) -> PreparedOperator:
+    """
+    Build (once) everything the matvec needs: cheap first/last cores, plus
+    per-dimension band stacks for the middle dimensions. This never
+    allocates an array larger than O(m * n^2) per dimension.
+    """
+    first_core = op.first_core()
+    last_core = op.last_core()
+    middle_sites = [op.prepare_middle_site(k) for k in range(1, op.p - 1)]
+    return PreparedOperator(
+        p=op.p,
+        m=op.m,
+        n={k: n for k, n in enumerate(op.local_dims)},
+        first_core=first_core,
+        last_core=last_core,
+        middle_sites=middle_sites,
+    )
+
+
+def tt_matrix_vector_product(
+    prepared: PreparedOperator,
+    x_cores: TTLike,
+    max_rank: int = 100,
+    tolerance: float = 1e-10,
+    random_state: Optional[int] = None,
+    sample_rows: Optional[int] = None,
+    sample_cols: Optional[int] = None,
+    timing: bool = False,
+) -> Union[List[np.ndarray], Tuple[List[np.ndarray], Dict[str, float]]]:
+    """
+    Matrix-vector product between the TT operator described by ``prepared``
+    (from ``prepare_operator``) and a TT vector ``x_cores``, generalized to
+    variable per-dimension rank and an arbitrary band list.
+    """
+    x_list = _as_tt_cores(x_cores)
+
+    t: Dict[str, float] = {}
+    t0_all = time.perf_counter()
+
+    d = prepared.p
+    m = prepared.m
+    y_cores: List[np.ndarray] = []
+    residual: Optional[np.ndarray] = None
+
+    for k in range(d):
+        x_core = x_list[k]
+        s1, n_x, s2 = x_core.shape
+
+        # ---- middle dimensions: banded, block-diagonal-free ----
+        if 1 <= k < d - 1:
+            site = prepared.middle_sites[k - 1]
+            r_left, r_right, nk = site['r_left'], site['r_right'], site['n']
+
+            if residual is None:
+                raise ValueError("Residual must be initialized before middle core.")
+
+            r_prev, mid_dim = residual.shape
+            expected_dim = m * r_left * s1
+            if mid_dim != expected_dim:
+                raise ValueError(
+                    f"Expected residual shape (_, {expected_dim}), got {residual.shape}"
+                )
+
+            residual_reshaped = residual.reshape(r_prev, m, r_left, s1)
+
+            t0 = time.perf_counter()
+            H_all = np.einsum('rmci,ins->rmcns', residual_reshaped, x_core, optimize=True)
+            if timing:
+                t["einsum_H"] = t.get("einsum_H", 0.0) + (time.perf_counter() - t0)
+
+            r_next = m * r_right * s2
+            y_updated = np.zeros((r_prev, nk, r_next), dtype=x_core.dtype)
+            yu = y_updated.reshape(r_prev, nk, m, r_right, s2)
+
+            for (src, dst, BT, idx) in site['bands']:
+                t0 = time.perf_counter()
+                H = H_all[:, idx, src, :, :]
+                B = BT[idx]
+                Y = np.einsum('rmns,mtn->rmts', H, B, optimize=True)
+                yu[:, :, idx, dst, :] += Y.transpose(0, 2, 1, 3)
+                if timing:
+                    key = f"einsum_band_{src}_{dst}"
+                    t[key] = t.get(key, 0.0) + (time.perf_counter() - t0)
+
+            t0 = time.perf_counter()
+            y_updated, residual = truncate_tt_core_cur(
+                y_updated, max_rank=max_rank, tol=tolerance,
+                sample_rows=sample_rows, sample_cols=sample_cols, random_state=random_state,
+            )
+            if timing:
+                t["truncate"] = t.get("truncate", 0.0) + (time.perf_counter() - t0)
+
+            y_cores.append(y_updated)
+            continue
+
+        # ---- first / last dimensions: cheap, plain tensordot ----
+        M_core = prepared.first_core if k == 0 else prepared.last_core
+        r1, n_k, m_k, r2 = M_core.shape
+        if m_k != n_x:
+            raise ValueError(f"Mismatch at core {k}: matrix has {m_k}, vector has {n_x}")
+
+        t0 = time.perf_counter()
+        tmp = np.tensordot(M_core, x_core, axes=([2], [1]))
+        y_core = tmp.transpose(0, 3, 1, 2, 4).reshape(r1 * s1, n_k, r2 * s2)
+        if timing:
+            t["tensordot_Mx"] = t.get("tensordot_Mx", 0.0) + (time.perf_counter() - t0)
+
+        if residual is not None:
+            if residual.shape[1] != y_core.shape[0]:
+                raise ValueError(
+                    f"Residual mismatch: residual.shape[1]={residual.shape[1]} vs "
+                    f"y_core.shape[0]={y_core.shape[0]}"
+                )
+            t0 = time.perf_counter()
+            y_core = np.tensordot(residual, y_core, axes=(1, 0))
+            if timing:
+                t["tensordot_residual"] = t.get("tensordot_residual", 0.0) + (time.perf_counter() - t0)
+
+        t0 = time.perf_counter()
+        y_core, residual = truncate_tt_core_cur(
+            y_core, max_rank=max_rank, tol=tolerance,
+            sample_rows=sample_rows, sample_cols=sample_cols, random_state=random_state,
+        )
+        if timing:
+            t["truncate"] = t.get("truncate", 0.0) + (time.perf_counter() - t0)
+
+        y_cores.append(y_core)
+
+    if residual is not None:
+        last_core = y_cores[-1]
+        if last_core.shape[2] != residual.shape[0]:
+            raise ValueError(
+                f"Final residual mismatch: last_core.shape[2]={last_core.shape[2]} vs "
+                f"residual.shape[0]={residual.shape[0]}"
+            )
+        t0 = time.perf_counter()
+        y_cores[-1] = np.tensordot(last_core, residual, axes=(2, 0))
+        if timing:
+            t["final_tensordot"] = t.get("final_tensordot", 0.0) + (time.perf_counter() - t0)
+
+    if timing:
+        t["total"] = time.perf_counter() - t0_all
+        return y_cores, t
+
+    return y_cores
+
+
+# ======================================================================================
 # Factory helper for repeated operator application
 # ======================================================================================
 
@@ -447,19 +625,40 @@ def make_A_mv(
     """
     Build a callable ``A_mv(x_tt)`` that applies a TT operator to a TT vector.
 
-    Rules:
-    - 1 core  -> raise clear error
-    - 2 cores -> run directly without middle-core preparation
-    - >2 cores -> prepare middle-core blocks
+    Dispatch:
+    - ``generator_op`` is a ``TgStiffnessOperator`` (Sigma=None, constant, or
+      samplewise): uses ``prepare_operator`` + ``tt_matrix_vector_product``,
+      the generalized banded matvec -- the block-diagonal middle cores are
+      never materialized, regardless of whether Sigma is present.
+    - ``generator_op`` exposes ``tg_cores`` (a plain list of dense TT-operator
+      cores, or an object with a ``.tg_cores``/``.tt_cores`` attribute):
+      falls back to the original rank-2-only path (``use_general=False``,
+      1 core -> error, 2 cores -> direct, >2 cores -> ``blocks`` required)
+      or the fully general dense tensordot path (``use_general=True``).
     """
+    if isinstance(generator_op, TgStiffnessOperator):
+        prepared = prepare_operator(generator_op)
+
+        def A_mv(x_tt: TTLike) -> List[np.ndarray]:
+            return tt_matrix_vector_product(
+                prepared, x_tt,
+                max_rank=max_rank, tolerance=tolerance,
+                sample_rows=sample_rows, sample_cols=sample_cols,
+                random_state=random_state,
+            )
+
+        return A_mv
+
     if not hasattr(generator_op, "tg_cores"):
-        raise ValueError("`generator_op` must expose a `tg_cores` attribute.")
+        raise ValueError(
+            "`generator_op` must be a TgStiffnessOperator or expose a `tg_cores` attribute."
+        )
 
     tg_cores = [np.asarray(core) for core in generator_op.tg_cores]
     _validate_tt_matrix_cores(tg_cores, name="generator_op.tg_cores")
 
     d = len(tg_cores)
-    prepared: Optional[PreparedBlocks] = None
+    prepared_blocks: Optional[PreparedBlocks] = None
 
     if not use_general:
         if d == 1:
@@ -472,16 +671,16 @@ def make_A_mv(
                     "`blocks` must be provided when using the specialized operator with more than 2 cores."
                 )
             m = tg_cores[1].shape[0] // 2
-            prepared = prepare_blocks(blocks, m)
+            prepared_blocks = prepare_blocks(blocks, m)
 
-    def A_mv(x_tt: TTLike) -> List[np.ndarray]:
+    def A_mv_dense(x_tt: TTLike) -> List[np.ndarray]:
         if use_general:
             return tt_matrix_vector_product_general(tg_cores, x_tt)
 
         return tt_matrix_vector_product_csr_prepared(
             tg_cores,
             x_tt,
-            prepared=prepared,
+            prepared=prepared_blocks,
             max_rank=max_rank,
             tolerance=tolerance,
             sample_rows=sample_rows,
@@ -490,7 +689,7 @@ def make_A_mv(
             timing=False,
         )
 
-    return A_mv
+    return A_mv_dense
 
 
 # ======================================================================================
@@ -710,18 +909,24 @@ def compute_A_r(
     if op.sigma_mode == "constant":
         Sigma = op.Sigma_prepared
         if Sigma is None:
-            # Implicit identity Sigma: Sigma @ W == W.
+            # No Sigma at all: TgStiffnessOperator's own convention uses
+            # scale -1/m for this case (not -1/(2m), which applies only
+            # when a real Sigma matrix is present) -- see has_sigma in
+            # tensor_gedmd.reps.stiffness_tt.TgStiffnessOperator.
             SW = W_full
+            prefactor = -(1.0 / m)
         else:
             SW = np.tensordot(Sigma, W_full, axes=([1], [1]))
             SW = np.moveaxis(SW, 0, 1)
+            prefactor = -(1.0 / (2.0 * m))
     else:
         SW = np.einsum('abl,lbj->laj', op.Sigma_prepared, W_full, optimize=True)
+        prefactor = -(1.0 / (2.0 * m))
 
     W2 = W_full.reshape(-1, r)
     SW2 = SW.reshape(-1, r)
     A_r = W2.T @ SW2
-    A_r *= -(1.0 / (2.0 * m))
+    A_r *= prefactor
     A_r = 0.5 * (A_r + A_r.T)
 
     print(f"  [compute_A_r] TOTAL {_fmt(time.perf_counter() - t0)}")

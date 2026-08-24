@@ -377,3 +377,83 @@ class TestExtractTTColumn:
     def test_extract_tt_column_raises_on_bad_index(self) -> None:
         with pytest.raises(IndexError, match="out of bounds"):
             extract_tt_column([np.zeros((1, 2, 3))], 7)
+
+
+# =========================================================
+# New: generalized banded matvec (constant + variable Sigma)
+# via TgStiffnessOperator + prepare_operator + tt_matrix_vector_product
+# =========================================================
+from tensor_gedmd.reps.stiffness_tt import TgStiffnessOperator
+from tensor_gedmd.algorithms.mat_vec_prod import prepare_operator, tt_matrix_vector_product
+
+
+class TestStiffnessOperatorBandedMatVec:
+    @pytest.mark.parametrize("sigma_case", ["none", "constant", "variable"])
+    @pytest.mark.parametrize("p,dims", [(2, [3, 4]), (3, [2, 3, 2])])
+    def test_matches_dense_reference(self, sigma_case, p, dims, rng: np.random.Generator) -> None:
+        m = 5
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+
+        if sigma_case == "none":
+            Sigma = None
+        elif sigma_case == "constant":
+            A = rng.normal(size=(p, p))
+            Sigma = A @ A.T + np.eye(p)
+        else:
+            Sigma = np.zeros((p, p, m))
+            for l in range(m):
+                A = rng.normal(size=(p, p))
+                Sigma[:, :, l] = A @ A.T + np.eye(p)
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_dense = op.to_dense()
+
+        x_cores = random_tt_vector(dims, [1] + [3] * (p - 1) + [1], rng)
+        x_dense = tt_vector_to_dense(x_cores).reshape(-1)
+
+        prepared = prepare_operator(op)
+        y_cores = tt_matrix_vector_product(prepared, x_cores, max_rank=10_000, tolerance=1e-14)
+        y_dense = tt_vector_to_dense(y_cores).reshape(-1)
+
+        y_ref = A_dense @ x_dense
+        rel_err = np.linalg.norm(y_dense - y_ref) / max(np.linalg.norm(y_ref), 1e-15)
+        assert rel_err < 1e-8
+
+    def test_make_A_mv_dispatches_to_banded_path_for_stiffness_operator(
+        self, rng: np.random.Generator
+    ) -> None:
+        p, m, dims = 3, 5, [2, 3, 2]
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+        Sigma = np.zeros((p, p, m))
+        for l in range(m):
+            A = rng.normal(size=(p, p))
+            Sigma[:, :, l] = A @ A.T + np.eye(p)
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_mv = make_A_mv(op, max_rank=10_000, tolerance=1e-14)
+
+        x_cores = random_tt_vector(dims, [1, 3, 3, 1], rng)
+        y_cores = A_mv(x_cores)
+        y_dense = tt_vector_to_dense(y_cores).reshape(-1)
+
+        y_ref = op.to_dense() @ tt_vector_to_dense(x_cores).reshape(-1)
+        rel_err = np.linalg.norm(y_dense - y_ref) / max(np.linalg.norm(y_ref), 1e-15)
+        assert rel_err < 1e-8
+
+    def test_make_A_mv_still_dispatches_to_legacy_path_for_plain_tg_cores(
+        self, rng: np.random.Generator
+    ) -> None:
+        # Existing (pre-TgStiffnessOperator) usage must still work unchanged:
+        # an object with a plain .tg_cores list, not a TgStiffnessOperator.
+        M = random_tt_matrix([2, 2], [2, 2], [1, 2, 1], rng)
+        op = DummyGeneratorOp(tg_cores=M)
+        A_mv = make_A_mv(op, use_general=True)
+
+        x = random_tt_vector([2, 2], [1, 2, 1], rng)
+        y_dense = tt_vector_to_dense(A_mv(x)).reshape(-1)
+        M_dense = tt_matrix_to_dense(M).reshape(4, 4)
+        x_dense = tt_vector_to_dense(x).reshape(-1)
+
+        assert np.allclose(y_dense, M_dense @ x_dense, atol=1e-10, rtol=1e-10)

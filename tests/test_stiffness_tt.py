@@ -295,3 +295,85 @@ if __name__ == "__main__":
 
 
 
+
+
+class TestConstantSigmaNowGenuinelyUsed:
+    """
+    Regression coverage for a behavior change: TgStiffnessOperator used to
+    silently ignore a real (non-identity) constant Sigma when building the
+    TT operator. It now genuinely incorporates it via the same band-based
+    construction used for samplewise Sigma.
+    """
+
+    def test_constant_nonidentity_sigma_changes_the_operator(self) -> None:
+        rng = np.random.default_rng(11)
+        p, m, dims = 2, 6, [3, 4]
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+
+        op_none = TgStiffnessOperator(psi=psi, dpsi=dpsi)
+        Sigma_const = np.array([[2.0, 0.7], [0.7, 1.3]])
+        op_const = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma_const)
+
+        A_none = op_none.to_dense()
+        A_const = op_const.to_dense()
+
+        # A real, non-identity Sigma must actually change the operator.
+        assert not np.allclose(A_none, A_const)
+
+    def test_constant_sigma_matches_dense_direct_ground_truth(self) -> None:
+        rng = np.random.default_rng(12)
+        p, m, dims = 3, 5, [2, 3, 2]
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+
+        A = rng.normal(size=(p, p))
+        Sigma = A @ A.T + np.eye(p)  # SPD, non-identity
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_tt = op.to_dense()
+        A_direct = op.build_dense_direct()
+
+        assert np.allclose(A_tt, A_direct, atol=1e-10)
+        assert np.allclose(A_tt, A_tt.T)
+
+    def test_no_warning_for_constant_sigma(self, recwarn) -> None:
+        rng = np.random.default_rng(13)
+        psi = [rng.normal(size=(3, 5)), rng.normal(size=(4, 5))]
+        dpsi = [rng.normal(size=(3, 5)), rng.normal(size=(4, 5))]
+        Sigma = np.array([[2.0, 0.5], [0.5, 1.0]])
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        op.to_dense()
+
+        assert len(recwarn) == 0
+
+
+class TestBandBasedGroundTruth:
+    """build_dense_direct() as an independent ground truth for the TT construction."""
+
+    @pytest.mark.parametrize("p,dims", [(2, [3, 4]), (3, [2, 3, 2]), (4, [2, 3, 4, 2])])
+    @pytest.mark.parametrize("sigma_case", ["none", "constant", "variable"])
+    def test_to_dense_matches_build_dense_direct(self, p, dims, sigma_case) -> None:
+        rng = np.random.default_rng(hash((p, sigma_case)) % (2**31))
+        m = 6
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+
+        if sigma_case == "none":
+            Sigma = None
+        elif sigma_case == "constant":
+            A = rng.normal(size=(p, p))
+            Sigma = A @ A.T + np.eye(p)
+        else:
+            Sigma = np.zeros((p, p, m))
+            for l in range(m):
+                A = rng.normal(size=(p, p))
+                Sigma[:, :, l] = A @ A.T + np.eye(p)
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_tt = op.to_dense()
+        A_direct = op.build_dense_direct()
+
+        assert np.allclose(A_tt, A_direct, atol=1e-9)
+        assert np.allclose(A_tt, A_tt.T, atol=1e-12)

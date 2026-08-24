@@ -287,3 +287,171 @@ def filter_ev(d: np.ndarray, W: np.ndarray, eps1: float = -np.inf, eps2: float =
 
     ind = np.where(np.logical_and(np.real(d) > eps1, np.real(d) < eps2))[0]
     return d[ind], W[:, ind]
+
+
+# ============================================================
+# Dense "vanilla" gEDMD reference method (reversible generator)
+#
+# Ports of dmp_methods.Util.util.whitening_transform and
+# dmp_methods.gEDMD.gEDMD.evaluate_generator_rev, the actual reference
+# implementation these were originally modeled on.
+#
+# whitening_transform and evaluate_generator_rev are faithful, unmodified
+# ports of the general library (neither mean-centers PhiX or divides by
+# the sample count m anywhere).
+#
+# spectral_analysis_gedmd_rev below is NOT the general library's version,
+# though -- it's this project's own mean-free variant: PhiX is
+# mean-centered before whitening (see the function's docstring). This is a
+# deliberate, project-specific choice, not the plain dmp_methods.gEDMD.gEDMD
+# behavior, and every dense/"Matrix" reference-method call in
+# examples/publication/ relies on this mean-free behavior specifically.
+# ============================================================
+
+def whitening_transform(
+    PhiX: np.ndarray,
+    tol: float,
+    rmin: int = 0,
+    return_svd: bool = False,
+    complex: bool = False,
+):
+    """
+    Compute whitening transformation of the mass matrix based on truncated
+    singular value decomposition.
+
+    Parameters
+    ----------
+    PhiX : np.ndarray, shape (n, m)
+        Functional (lifted) time series: n basis functions evaluated at m
+        data points.
+    tol : float
+        Relative truncation threshold for the SVD (singular values below
+        ``tol * s[0]`` are dropped).
+    rmin : int, default=0
+        Minimum rank to retain regardless of tol.
+    return_svd : bool, default=False
+        If True, also return the (possibly complex-conjugated) SVD
+        components ``(U, s, V)`` used to build L.
+    complex : bool, default=False
+        If True, use the complex conjugate when forming V.
+
+    Returns
+    -------
+    L : np.ndarray, shape (n, r)
+        Linear transformation to a whitened reduced basis, such that
+        ``L.T @ (PhiX @ PhiX.T) @ L`` is (approximately) the identity.
+    (U, s, V) : tuple, only if return_svd=True
+        Truncated SVD components of PhiX (V has shape (m, r)).
+    """
+    from scipy.linalg import svd
+
+    U, s, V = svd(PhiX, full_matrices=False)
+    ind = np.where(s / s[0] >= tol)[0]
+    r = np.maximum(ind.shape[0], rmin)
+    U = U[:, :r]
+    s = s[:r]
+    if complex:
+        V = V[:r, :].conj().T
+    else:
+        V = V[:r, :].T
+    L = U * (s ** (-1))[None, :]
+    if return_svd:
+        return L, (U, s, V)
+    return L
+
+
+def evaluate_generator_rev(X: np.ndarray, phi, a, is_complex: bool = False) -> np.ndarray:
+    """
+    Compute the stiffness matrix for the reversible generator on a given
+    finite-dimensional basis set.
+
+    Parameters
+    ----------
+    X : np.ndarray, shape (d, m)
+        m data points in d-dimensional space.
+    phi : object with a ``.gradient(X)`` method
+        Basis set; ``phi.gradient(X)`` must return shape (n, d, m) (e.g.
+        ``tensor_gedmd.basis_sets.product_basis.ProductBasis``).
+    a : float or np.ndarray, shape (d, d, m)
+        Diffusion tensor. A Python/NumPy scalar means a constant isotropic
+        diffusion; an array means a samplewise diffusion tensor.
+    is_complex : bool, default=False
+        If True, conjugate the left factor (for a complex basis set).
+
+    Returns
+    -------
+    A_L : np.ndarray, shape (n, n)
+        Stiffness matrix for the reversible generator.
+    """
+    dPhiX = phi.gradient(X)  # (n, d, m)
+
+    if np.isscalar(a):
+        if is_complex:
+            A_L = -0.5 * a * np.tensordot(dPhiX.conj(), dPhiX, axes=[(1, 2), (1, 2)])
+        else:
+            A_L = -0.5 * a * np.tensordot(dPhiX, dPhiX, axes=[(1, 2), (1, 2)])
+    else:
+        if is_complex:
+            A_L = -0.5 * np.einsum("ril, ijl, sjl -> rs", dPhiX.conj(), a, dPhiX, optimize=True)
+        else:
+            A_L = -0.5 * np.einsum("ril, ijl, sjl -> rs", dPhiX, a, dPhiX, optimize=True)
+
+    return A_L
+
+
+def spectral_analysis_gedmd_rev(X: np.ndarray, phi, nev: int, a, tol: float = 0.0, eps_ev: float = 0.0):
+    """
+    Spectral decomposition of the reversible Koopman generator on a
+    finite-dimensional basis set, via whitening transform + eigh.
+
+    Mean-free variant: PhiX is mean-centered (per basis function, across
+    samples) before whitening. This is a project-specific choice -- the
+    general dmp_methods.gEDMD.gEDMD library does not mean-center -- kept
+    here deliberately because every dense/"Matrix" reference-method call in
+    examples/publication/ relies on it: mean-centering PhiX before
+    whitening is what keeps the trivial constant-function eigenvalue
+    (every generator has exactly one, at 0) from surfacing as a spurious
+    "leading" eigenvalue in the returned spectrum.
+
+    Parameters
+    ----------
+    X : np.ndarray, shape (d, m)
+    phi : object with ``__call__(X)`` -> (n, m) and ``.gradient(X)`` -> (n, d, m)
+    nev : int
+        Number of leading eigenvalues to keep.
+    a : float or np.ndarray, shape (d, d, m)
+        Diffusion tensor (see evaluate_generator_rev).
+    tol : float, default=0.0
+        Relative SVD cutoff for the whitening transform.
+    eps_ev : float, default=0.0
+        Discard eigenvalues with real part >= -eps_ev (i.e. keep the
+        strictly-negative/stable part of the spectrum).
+
+    Returns
+    -------
+    d : np.ndarray, shape (nev,)
+        Leading eigenvalues, ascending-to-descending as filter_ev leaves
+        them (largest/least-negative last).
+    W : np.ndarray, shape (n, nev)
+        Corresponding eigenvectors in the original (unwhitened) basis.
+    Wdata : np.ndarray, shape (nev, m)
+        Eigenvectors evaluated at the data points.
+    """
+    from scipy.linalg import eigh
+
+    PhiX = phi(X)
+    PhiX_meanfree = PhiX - PhiX.mean(axis=1, keepdims=True)
+    A_L = evaluate_generator_rev(X, phi, a)
+
+    L = whitening_transform(PhiX_meanfree, tol, return_svd=False)
+    R = L.T @ A_L @ L
+    d, W = eigh(R)
+
+    d, W = filter_ev(d, W, eps2=-eps_ev)
+    d = d[-nev:]
+    W = W[:, -nev:]
+
+    W = L @ W
+    Wdata = W.T @ PhiX
+
+    return d, W, Wdata
