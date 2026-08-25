@@ -10,16 +10,16 @@ dimension 3, 6, and 10:
 
 This file is the multi-dimension orchestration only -- it imports the
 actual "what does one dimension compute" logic from
-run_calculation_pcca_base.py (load_raw_data,
-tica_and_diffusion_evenly_spaced, spectral_analysis_gedmd_dense,
+run_calculation_pcca_base.py (load_dim, spectral_analysis_gedmd_dense,
 tensor_reduced_matrix) and loops over DIMS = [3, 6, 10]. See that file to
 understand the idea on its own (dim=3, both methods), or run it directly
 for a quick single-dimension demo without the full sweep.
 
 Requirements
 ------------
-Same as run_calculation_pcca_base.py: `deeptime`, `mdtraj`, `jax`
-importable, and the same data files (see data/README.md).
+Just `numpy`/`scipy` plus `tensor_gedmd` itself -- no jax/mdtraj/deeptime
+needed, since TICA and the diffusion tensor are already precomputed. See
+data/README.md.
 
 Usage
 -----
@@ -42,11 +42,10 @@ from run_calculation_pcca_base import (
     K_CLUSTERS,
     N_BASIS,
     SIGMA_RFF,
-    load_raw_data,
+    load_dim,
     rff_omega,
     spectral_analysis_gedmd_dense,
     tensor_reduced_matrix,
-    tica_and_diffusion_evenly_spaced,
 )
 from tensor_gedmd.basis_sets.product_basis import ProductBasis
 from tensor_gedmd.basis_sets.random_fourier_features import RandomFourierFeatures
@@ -55,12 +54,10 @@ RESULTS_PATH = Path(__file__).resolve().parent / "results" / "chignolin_pcca_mul
 
 
 def main() -> None:
-    trajectories, diff_full = load_raw_data()
-
     results = {}
     for dim in DIMS:
         print(f"\n{'=' * 64}\n  TICA dim = {dim}\n{'=' * 64}")
-        Xlist, dmat = tica_and_diffusion_evenly_spaced(trajectories, diff_full, dim)
+        Xlist, dmat = load_dim(dim)
 
         reduced_matrix, V_core, r = tensor_reduced_matrix(Xlist, dmat)
         results[f"Xlist_{dim}"] = Xlist

@@ -2,7 +2,7 @@
 Chignolin -- run_calculation_threshold_and_dim_sweep.py (Experiments 1 & 2: threshold sweep + dimension sweep)
 
 Two combined experiments, both feeding
-plots/chignolin_plot_figure_eigenvalues_vs_svd_threshold_and_tica_dimension.py:
+plots/plot_figure_chignolin_eigenvalues_vs_svd_threshold_and_tica_dimension.py:
 
   Experiment 2 (threshold sweep): for a few TICA dimensions (CURVE_DIMS),
     sweep the global_svd_tt truncation tolerance and record the leading two
@@ -15,18 +15,17 @@ plots/chignolin_plot_figure_eigenvalues_vs_svd_threshold_and_tica_dimension.py:
 
 This file is the sweep/repeat orchestration only -- it imports the actual
 "what does one experiment compute" logic from
-run_calculation_threshold_and_dim_sweep_base.py (load_raw_data,
-tica_and_diffusion, run_subsample) and wraps run_subsample in loops over
+run_calculation_threshold_and_dim_sweep_base.py (load_dim_pool,
+run_subsample) and wraps run_subsample in loops over
 dims x N_RUNS, with per-dimension sigma/rank-cap settings and tolerance
 lists. See that file to understand the idea on its own, or run it directly
 for a quick single-experiment demo without the full sweep.
 
 Requirements
 ------------
-- `deeptime` (TICA), `mdtraj` (topology/CA selection), `jax` (Jacobian of
-  pairwise distances) all importable.
-- Data files at CG_PICKLE_PATH / CG_ATOMIC_NUMBERS_PATH / PDB_PATH (see
-  run_calculation_threshold_and_dim_sweep_base.py / data/README.md).
+Just `numpy`/`scipy` plus `tensor_gedmd` itself -- no jax/mdtraj/deeptime
+needed, since TICA and the diffusion tensor are already precomputed. See
+run_calculation_threshold_and_dim_sweep_base.py / data/README.md.
 
 Usage
 -----
@@ -46,9 +45,8 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "common"))
 from results_io import save_results  # noqa: E402
 
 from run_calculation_threshold_and_dim_sweep_base import (
-    load_raw_data,
+    load_dim_pool,
     run_subsample,
-    tica_and_diffusion,
 )
 
 RESULTS_PATH = Path(__file__).resolve().parent / "results" / "chignolin_results.npz"
@@ -87,8 +85,6 @@ assert SELECTED_TOL in SVD_TOLS, "SELECTED_TOL must be one of SVD_TOLS"
 
 
 def main() -> None:
-    trajectories, diff_full = load_raw_data()
-
     all_dims = sorted(set(TICA_DIMS) | set(CURVE_DIMS))
 
     # Threshold-sweep results: (n_curve_dims, N_RUNS, n_tols)
@@ -104,7 +100,7 @@ def main() -> None:
     t_wall = time.perf_counter()
     for dim in all_dims:
         print(f"\n{'=' * 64}\n  TICA dim = {dim}\n{'=' * 64}")
-        tica_data, dmat_all, N_total = tica_and_diffusion(trajectories, diff_full, dim)
+        tica_data, dmat_all, N_total = load_dim_pool(dim)
 
         if dim in CURVE_DIMS:
             i_dim = CURVE_DIMS.index(dim)

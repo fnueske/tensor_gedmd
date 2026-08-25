@@ -9,7 +9,9 @@ trajectory data.
 chignolin/
 ├── README.md                                          (this file)
 ├── data/
-│   └── README.md                                       raw data / Zenodo link
+│   └── README.md                                       precomputed data / Zenodo link
+├── build_precomputed_data.py                            optional: regenerate the
+│                                                          precomputed files from raw data
 ├── run_calculation_threshold_and_dim_sweep_base.py      idea: one subsample,
 │                                                          one dim, swept over
 │                                                          tolerances
@@ -43,16 +45,43 @@ demo of the underlying idea, with no sweeping/repeating and no plot. See
 
 ## Data
 
+**Default: precomputed data (recommended).** Every calculation script here
+loads two small files -- `cln_tica.npy` (TICA coordinates, fit once at
+dimension 10) and `cln_diff.npy` (the diffusion tensor, projected onto all
+10 TICA directions). Any script needing a smaller dimension just slices
+these -- e.g. dim=3 uses `cln_tica.npy[:3, :]` -- which has been validated
+to give bit-for-bit identical results to fitting/projecting separately at
+that smaller dimension. With these two files, **no `jax`/`mdtraj`/`deeptime`
+is needed at all** -- just `numpy`/`scipy`.
+
 See `data/README.md` for the Zenodo download link. By default, every
-script here looks for `cln_tica.pkl`, `cln_atomic.pkl`, and `chi_vac.pdb`
-in `chignolin/data/`. Override with the `CHIGNOLIN_DATA_DIR` environment
-variable if your data lives elsewhere -- no need to edit any script:
+script looks for `cln_tica.npy` and `cln_diff.npy` in `chignolin/data/`.
+Override with the `CHIGNOLIN_DATA_DIR` environment variable if your data
+lives elsewhere -- no need to edit any script:
 
 ```bash
 CHIGNOLIN_DATA_DIR=/path/to/your/data python run_calculation_pcca_multi_dim.py
 ```
 
+**If you have the raw data instead** (`cln_tica.pkl`, `cln_atomic.pkl` --
+the large one -- and `chi_vac.pdb`) and want to regenerate the precomputed
+files yourself (or verify them), run `build_precomputed_data.py` once:
+
+```bash
+CHIGNOLIN_DATA_DIR=/path/to/your/raw/data python build_precomputed_data.py
+```
+
+This does the real `jax` Jacobian computation and TICA fit (the expensive,
+one-time step) and writes `cln_tica.npy`/`cln_diff.npy` -- after that,
+every other script in this folder never touches the raw data again.
+
 ## Requirements
+
+Just `tensor_gedmd` itself (`pip install -e .` from the repository root) --
+no `deeptime`/`mdtraj`/`jax` needed for the calculation scripts, since TICA
+and the diffusion tensor are already precomputed. Those three packages are
+only needed if you're running `build_precomputed_data.py` to regenerate the
+precomputed files from raw data:
 
 ```bash
 pip install deeptime mdtraj jax jaxlib
@@ -77,9 +106,7 @@ python chignolin_supplementary.py
 python plots/plot_figure_chignolin_supplementary.py
 ```
 
-All four calculation scripts do a real `jax` Jacobian computation over the
-trajectory data -- expect each to take a while, not something to run
-casually multiple times. `run_calculation_threshold_and_dim_sweep.py`,
+`run_calculation_threshold_and_dim_sweep.py`,
 `run_calculation_scratch_vs_incremental.py`, and
 `chignolin_supplementary.py` each have a `QUICK_TEST` toggle near the top
 for a fast smoke test with tiny parameters first.

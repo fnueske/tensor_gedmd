@@ -13,11 +13,11 @@ method to still be affordable -- at higher dimensions (6, 10) the dense
 method becomes prohibitively expensive (n_basis^dim grows fast), so those
 use the Tensor method only.
 
-run_calculation_pcca_multi_dim.py imports load_raw_data /
-tica_and_diffusion_evenly_spaced / spectral_analysis_gedmd_dense /
-tensor_reduced_matrix from here and loops over DIMS = [3, 6, 10], using
-both methods at dim=3 and Tensor-only at dim=6, 10, to produce
-chignolin_pcca_multi_dim_results.npz (the actual paper figure's data).
+run_calculation_pcca_multi_dim.py imports load_dim /
+spectral_analysis_gedmd_dense / tensor_reduced_matrix from here and loops
+over DIMS = [3, 6, 10], using both methods at dim=3 and Tensor-only at
+dim=6, 10, to produce chignolin_pcca_multi_dim_results.npz (the actual
+paper figure's data).
 
 Unlike chignolin/run_calculation_threshold_and_dim_sweep.py (which
 averages over N_RUNS subsamples for error bars), this figure uses one
@@ -25,10 +25,15 @@ deterministic, evenly-spaced subsample (np.linspace over the pool) per
 dimension -- matching the original notebook, which reports single point
 estimates here, not error-barred sweeps.
 
-The diffusion tensor is estimated the same way as in chignolin/
-run_calculation_threshold_and_dim_sweep.py (jax Jacobian of pairwise CA-CA
-distances, projected onto the TICA directions) -- kept verbatim since it's
-real, data-dependent computation with no tensor_gedmd equivalent.
+Data: this loads the precomputed cln_tica.npy / cln_diff.npy (TICA fit
+once at dim=10, diffusion tensor projected onto all 10 directions --
+validated to give bit-for-bit identical results to fitting/projecting
+separately at a smaller dimension and slicing). If you only have the raw
+data (cln_tica.pkl, cln_atomic.pkl, chi_vac.pdb -- the last of which is
+large, a real jax Jacobian computation), run build_precomputed_data.py
+once first to generate these two files; every calculation script here
+uses the precomputed files directly and never touches the raw data or
+needs jax/mdtraj/deeptime.
 
 Run this file directly for a quick, single-dimension demo -- dim=3, both
 methods, no plot. Confirms the pipeline runs correctly on your data before
@@ -36,8 +41,10 @@ committing to the full dim=3/6/10 sweep.
 
 Requirements
 ------------
-`deeptime`, `mdtraj`, `jax` importable, and the same data files (see
-data/README.md).
+Just `numpy`/`scipy` plus `tensor_gedmd` itself -- no jax/mdtraj/deeptime
+needed, since TICA and the diffusion tensor are already precomputed. See
+data/README.md for the precomputed files (cln_tica.npy / cln_diff.npy) or
+the raw data if you'd rather regenerate them yourself.
 
 Usage
 -----
@@ -46,11 +53,7 @@ Usage
 
 from __future__ import annotations
 
-import gc
-import itertools
 import os
-import pickle
-import time
 from pathlib import Path
 
 import numpy as np
@@ -69,32 +72,26 @@ from tensor_gedmd.reps.transformed_data_tensor import Transformed_Data_Tensor_TT
 DATA_DIR = Path(os.environ.get(
     "CHIGNOLIN_DATA_DIR", str(Path(__file__).resolve().parent / "data")
 ))
-CG_PICKLE_PATH = DATA_DIR / "cln_tica.pkl"
-CG_ATOMIC_NUMBERS_PATH = DATA_DIR / "cln_atomic.pkl"
-PDB_PATH = DATA_DIR / "chi_vac.pdb"
+CG_TICA_NPY_PATH = Path(os.environ.get("CHIGNOLIN_TICA_NPY", str(DATA_DIR / "cln_tica.npy")))
+CG_DIFF_NPY_PATH = Path(os.environ.get("CHIGNOLIN_DIFF_NPY", str(DATA_DIR / "cln_diff.npy")))
 
 # ----------------------------------------------------------------------
-# Physical/pipeline constants (verbatim from the source notebook) -- the
-# same regardless of which dimension is being computed, so they live here
-# rather than in the multi-dim orchestration file. DIMS in particular is
-# the fixed dimension list, not something that varies per call.
+# Physical/pipeline constants -- the same regardless of which dimension is
+# being computed, so they live here rather than in the multi-dim
+# orchestration file. DIMS in particular is the fixed dimension list, not
+# something that varies per call. MAX_DIM_AVAILABLE must match whatever
+# dimension build_precomputed_data.py fit TICA at (10 by default).
 # ----------------------------------------------------------------------
 DIMS = [3, 6, 10]
+MAX_DIM_AVAILABLE = 10
 
 N_BASIS = 10
 SIGMA_RFF = 25.0
-LAGTIME = 10
 TARGET_M = 6000
 R_TRUNC = 99999
 SVD_TOL = 1e-12
 NEV = 40
 K_CLUSTERS = 3
-
-M_MASS = 12.0
-T_K = 300.0
-GAMMA = 0.1
-K_B = 8.314462618e-3
-BETA = 1.0 / (K_B * T_K)
 
 
 def rff_omega(n: int, sigma: float) -> np.ndarray:
@@ -102,69 +99,32 @@ def rff_omega(n: int, sigma: float) -> np.ndarray:
 
 
 # ============================================================
-# Raw data + diffusion tensor
+# Data loading (precomputed -- no jax/mdtraj/deeptime needed)
 # ============================================================
 
-def load_raw_data():
-    import mdtraj as md
-    import jax.numpy as jnp
-    from jax import jacrev, vmap
-
-    print("Loading raw data ...")
-    trajectories = []
-    with open(CG_PICKLE_PATH, "rb") as f:
-        for traj in pickle.load(f)["x"]:
-            trajectories.append(traj)
-
-    top = md.load_topology(PDB_PATH)
-    CA_atoms = top.select("name CA")
-
-    with open(CG_ATOMIC_NUMBERS_PATH, "rb") as f:
-        x_atomic = np.concatenate(
-            [d.xyz[:, CA_atoms] for d in pickle.load(f)["x"]], axis=0
+def load_dim(dim: int):
+    """
+    Load the precomputed TICA coordinates and diffusion tensor, slice to
+    the requested dimension (dim <= MAX_DIM_AVAILABLE), then take one
+    deterministic, evenly-spaced subsample of TARGET_M frames (matching
+    the original notebook's np.linspace subsampling -- not a random draw,
+    and not repeated/averaged).
+    """
+    if dim > MAX_DIM_AVAILABLE:
+        raise ValueError(
+            f"dim={dim} exceeds MAX_DIM_AVAILABLE={MAX_DIM_AVAILABLE} -- "
+            f"re-run build_precomputed_data.py with a higher MAX_DIM if you need this."
         )
 
-    CA_comb = np.array(list(itertools.combinations(np.arange(len(CA_atoms)), 2)))
+    tica_data_full = np.load(CG_TICA_NPY_PATH, allow_pickle=True)
+    diff_full = np.load(CG_DIFF_NPY_PATH, allow_pickle=True)
 
-    def distances(t):
-        return jnp.linalg.norm(t[CA_comb[:, 1]] - t[CA_comb[:, 0]], axis=1)
-
-    def jac(x):
-        return jacrev(distances, argnums=0)(x)
-
-    print("  Jacobian (vmap) ...", end="", flush=True)
-    t0 = time.perf_counter()
-    diff_full = vmap(jac, in_axes=(0,), out_axes=0)(x_atomic).transpose(1, 2, 3, 0)
-    print(f" done ({time.perf_counter() - t0:.1f}s)  shape: {diff_full.shape}")
-    del x_atomic
-    gc.collect()
-    return trajectories, np.asarray(diff_full)
-
-
-def tica_and_diffusion_evenly_spaced(trajectories, diff_full, dim: int):
-    """
-    Run TICA at a given dimension, project the diffusion tensor onto the
-    TICA directions, then take one deterministic, evenly-spaced subsample
-    of TARGET_M frames (matching the original notebook's np.linspace
-    subsampling -- not a random draw, and not repeated/averaged).
-    """
-    from deeptime import decomposition
-
-    tica = decomposition.TICA(lagtime=LAGTIME, dim=dim)
-    tica_model = tica.fit(trajectories).fetch_model()
-    tica_data = tica_model.transform(trajectories).reshape(-1, dim).T
-    eigs = tica_model.singular_values
-    ind_sort = np.argsort(eigs)[::-1]
-    eigvec = tica_model.singular_vectors_left[:, ind_sort]
-
-    dtr = np.einsum("ijlr,ik->kjlr", diff_full, eigvec[:, :dim])
-    dmat_full = (2.0 / BETA / M_MASS / GAMMA) * np.einsum("gikl,hikl->ghl", dtr, dtr)
-    del dtr
+    tica_data = tica_data_full[:dim, :]
+    dmat_full = diff_full[:dim, :dim, :]
 
     sample_idx = np.linspace(0, tica_data.shape[1] - 1, TARGET_M, dtype=int)
     Xlist = tica_data[:, sample_idx]
     dmat = dmat_full[:, :, sample_idx]
-    del dmat_full
 
     print(f"  dim={dim}: Xlist {Xlist.shape}, dmat {dmat.shape}")
     return Xlist, dmat
@@ -220,8 +180,7 @@ if __name__ == "__main__":
 
     DEMO_DIM = 3
 
-    trajectories, diff_full = load_raw_data()
-    Xlist, dmat = tica_and_diffusion_evenly_spaced(trajectories, diff_full, DEMO_DIM)
+    Xlist, dmat = load_dim(DEMO_DIM)
 
     reduced_matrix, V_core, r = tensor_reduced_matrix(Xlist, dmat)
     print(f"\nTensor method -- dim={DEMO_DIM}: TT rank={r}")
