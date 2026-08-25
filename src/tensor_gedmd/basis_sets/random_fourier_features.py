@@ -11,22 +11,25 @@ from tensor_gedmd.basis_sets.basis_sets import BasisSet
 
 class RandomFourierFeatures(BasisSet):
     r"""
-    Minimal cosine Random Fourier Features basis.
+    Cosine Random Fourier Features basis.
 
     Parameters
     ----------
     omega : array-like, shape (n, d)
-        Frequency matrix.
+        Frequency matrix. Typically d = 1 (one physical dimension per basis
+        instance, as consumed by Transformed_Data_Tensor_TT / TgStiffnessOperator).
     b : array-like, optional, shape (n,)
-        Phase offsets. If None, uses deterministic linspace in [0, 2pi).
+        Phase offsets. If None, uses a deterministic linspace in [0, 2*pi).
+        If given, it is actually used (unlike some reference implementations
+        that accept ``b`` but silently overwrite it with the default).
     dtype : float dtype
         Computation dtype.
 
     Dimension conventions
     ---------------------
-    Input x:  (m, d)
-    Output:   (m, n)
-    Gradient: (m, n, d)
+    Input X:    (d, m)
+    Output:     (n, m)
+    Derivative: (n, d, m)
     """
 
     def __init__(self, *, omega: Any, b: Optional[Any] = None, dtype=np.float64) -> None:
@@ -51,32 +54,17 @@ class RandomFourierFeatures(BasisSet):
 
         self.scale = np.sqrt(2.0 / self.n).astype(self._dtype)
 
-    def __call__(self, x: Any) -> np.ndarray:
-        x_arr = self._format_input(x, expected_dim=self.d)  # (m, d)
-        # (m, d) @ (d, n) -> (m, n)
-        arg = x_arr @ self.omega.T + self.b[None, :]
+    def __call__(self, X: Any) -> np.ndarray:
+        X_arr = self._format_input(X, expected_dim=self.d)  # (d, m)
+        # (n, d) @ (d, m) + (n, 1) -> (n, m)
+        arg = self.omega @ X_arr + self.b[:, None]
         return self.scale * np.cos(arg)
 
-    def _gradient(self, x: Any) -> np.ndarray:
-        x_arr = self._format_input(x, expected_dim=self.d)  # (m, d)
-        arg = x_arr @ self.omega.T + self.b[None, :]  # (m, n)
+    def _gradient(self, X: Any) -> np.ndarray:
+        X_arr = self._format_input(X, expected_dim=self.d)  # (d, m)
+        arg = self.omega @ X_arr + self.b[:, None]  # (n, m)
 
-        # d/dx cos(omega x + b) = -sin(...) * omega
-        # (-scale*sin(arg)) -> (m, n)
-        # multiply by omega -> (m, n, d)
-        sin_term = np.sin(arg)[:, :, None]  # (m, n, 1)
-        return (-self.scale * sin_term) * self.omega[None, :, :]  # (m, n, d)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        # d/dX cos(omega @ X + b) = -sin(arg) * omega, per input dimension.
+        # (-scale*sin(arg)) -> (n, 1, m); omega -> (n, d, 1); product -> (n, d, m)
+        sin_term = np.sin(arg)[:, None, :]  # (n, 1, m)
+        return (-self.scale * sin_term) * self.omega[:, :, None]  # (n, d, m)

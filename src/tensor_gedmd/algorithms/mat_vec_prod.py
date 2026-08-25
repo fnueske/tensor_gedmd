@@ -1,20 +1,51 @@
 from __future__ import annotations
 
+import os
 import time
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
 from tensor_gedmd.algorithms.util import truncate_tt_core_cur
 from tensor_gedmd.reps.tensor_train import TT
+from tensor_gedmd.reps.stiffness_tt import TgStiffnessOperator
+from tensor_gedmd.operations import (
+    TTInnerProductMixin,
+    extract_tt_column,
+    tt_inner_product,
+    tt_matrix_to_dense,
+    tt_norm,
+    tt_vector_to_dense,
+)
+from tensor_gedmd.operations.tt_operations import (
+    TTLike,
+    _as_tt_cores,
+    _validate_tt_matrix_cores,
+    _validate_tt_vector_cores,
+)
 
-
-# ======================================================================================
-# Types
-# ======================================================================================
-
-TTLike = Union[TT, Sequence[np.ndarray]]
+# Re-exported here for backwards compatibility with existing imports from
+# tensor_gedmd.algorithms.mat_vec_prod; the generic implementations now live
+# in tensor_gedmd.operations.
+__all__ = [
+    "PreparedBlocks",
+    "prepare_blocks",
+    "tt_matrix_vector_product_general",
+    "tt_matrix_vector_product_csr_prepared",
+    "PreparedOperator",
+    "prepare_operator",
+    "tt_matrix_vector_product",
+    "make_A_mv",
+    "compute_A_r",
+    "TTInnerProductMixin",
+    "extract_tt_column",
+    "tt_inner_product",
+    "tt_matrix_to_dense",
+    "tt_norm",
+    "tt_vector_to_dense",
+]
 
 
 # ======================================================================================
@@ -55,98 +86,8 @@ class PreparedBlocks:
 # ======================================================================================
 # Internal helpers
 # ======================================================================================
-
-def _as_tt_cores(tt_obj: TTLike) -> List[np.ndarray]:
-    """
-    Return TT cores as a plain list of NumPy arrays.
-    """
-    if isinstance(tt_obj, TT):
-        if hasattr(tt_obj, "tt_cores"):
-            return [np.asarray(core) for core in tt_obj.tt_cores]
-        if hasattr(tt_obj, "cores"):
-            return [np.asarray(core) for core in tt_obj.cores]
-
-    if hasattr(tt_obj, "tt_cores"):
-        return [np.asarray(core) for core in tt_obj.tt_cores]
-
-    if hasattr(tt_obj, "cores"):
-        return [np.asarray(core) for core in tt_obj.cores]
-
-    if isinstance(tt_obj, (list, tuple)):
-        return [np.asarray(core) for core in tt_obj]
-
-    raise TypeError(
-        "Expected a TT object, an object with `.tt_cores`/`.cores`, "
-        f"or a sequence of NumPy arrays; got {type(tt_obj)!r}."
-    )
-
-
-def _validate_tt_vector_cores(x_cores: Sequence[np.ndarray], *, name: str = "x_cores") -> None:
-    """
-    Validate TT-vector cores with shape ``(r_{k-1}, n_k, r_k)``.
-    """
-    if len(x_cores) == 0:
-        raise ValueError(f"{name} must contain at least one core.")
-
-    prev_rank_right = None
-    for k, core in enumerate(x_cores):
-        if core.ndim != 3:
-            raise ValueError(
-                f"{name}[{k}] must have 3 dimensions (r_left, mode, r_right); "
-                f"got shape {core.shape}."
-            )
-
-        r_left, mode, r_right = core.shape
-        if r_left <= 0 or mode <= 0 or r_right <= 0:
-            raise ValueError(f"{name}[{k}] has invalid non-positive shape {core.shape}.")
-
-        if k == 0 and r_left != 1:
-            raise ValueError(f"{name}[0] must have left TT-rank 1; got {r_left}.")
-
-        if k > 0 and prev_rank_right != r_left:
-            raise ValueError(
-                f"Inconsistent TT ranks between {name}[{k - 1}] and {name}[{k}]: "
-                f"{prev_rank_right} != {r_left}."
-            )
-
-        prev_rank_right = r_right
-
-    if x_cores[-1].shape[2] != 1:
-        raise ValueError(f"{name}[-1] must have right TT-rank 1; got {x_cores[-1].shape[2]}.")
-
-
-def _validate_tt_matrix_cores(M_cores: Sequence[np.ndarray], *, name: str = "M_cores") -> None:
-    """
-    Validate TT-matrix cores with shape ``(r_{k-1}, n_k, m_k, r_k)``.
-    """
-    if len(M_cores) == 0:
-        raise ValueError(f"{name} must contain at least one core.")
-
-    prev_rank_right = None
-    for k, core in enumerate(M_cores):
-        if core.ndim != 4:
-            raise ValueError(
-                f"{name}[{k}] must have 4 dimensions (r_left, n, m, r_right); "
-                f"got shape {core.shape}."
-            )
-
-        r_left, n_k, m_k, r_right = core.shape
-        if r_left <= 0 or n_k <= 0 or m_k <= 0 or r_right <= 0:
-            raise ValueError(f"{name}[{k}] has invalid non-positive shape {core.shape}.")
-
-        if k == 0 and r_left != 1:
-            raise ValueError(f"{name}[0] must have left TT-rank 1; got {r_left}.")
-
-        if k > 0 and prev_rank_right != r_left:
-            raise ValueError(
-                f"Inconsistent TT ranks between {name}[{k - 1}] and {name}[{k}]: "
-                f"{prev_rank_right} != {r_left}."
-            )
-
-        prev_rank_right = r_right
-
-    if M_cores[-1].shape[3] != 1:
-        raise ValueError(f"{name}[-1] must have right TT-rank 1; got {M_cores[-1].shape[3]}.")
+# _as_tt_cores, _validate_tt_vector_cores, and _validate_tt_matrix_cores now
+# live in tensor_gedmd.operations.tt_operations and are imported above.
 
 
 def _validate_matrix_vector_compatibility(
@@ -493,6 +434,180 @@ def tt_matrix_vector_product_csr_prepared(
 
 
 # ======================================================================================
+# Generalized (constant + variable diffusion) banded matvec
+#
+# Same algorithmic skeleton as tt_matrix_vector_product_csr_prepared above,
+# but the rank/band structure is read directly from a TgStiffnessOperator
+# (tensor_gedmd.reps.stiffness_tt) instead of being hardcoded to rank 2 with
+# fixed 00/11/01 bands. When the operator has no Sigma, every middle
+# dimension has r_left=r_right=2 and exactly those 3 bands, so this reduces
+# to numerically the same computation as tt_matrix_vector_product_csr_prepared
+# above; with a constant or samplewise Sigma, the rank grows and additional
+# bands appear, but the (m*r_left, n, n, m*r_right) block-diagonal middle
+# core is still never materialized -- only the compact per-band (m, n, n)
+# stacks from TgStiffnessOperator.prepare_middle_site are used.
+# ======================================================================================
+
+@dataclass
+class PreparedOperator:
+    """Everything a matvec needs, prepared once from a TgStiffnessOperator."""
+
+    p: int
+    m: int
+    n: Dict[int, int]
+    first_core: np.ndarray                                    # (1, n0, n0, m*r1)
+    last_core: np.ndarray                                     # (m*r_{p-1}, n_{p-1}, n_{p-1}, 1)
+    middle_sites: List[dict] = field(default_factory=list)     # dims 1..p-2, in order
+
+
+def prepare_operator(op: TgStiffnessOperator) -> PreparedOperator:
+    """
+    Build (once) everything the matvec needs: cheap first/last cores, plus
+    per-dimension band stacks for the middle dimensions. This never
+    allocates an array larger than O(m * n^2) per dimension.
+    """
+    first_core = op.first_core()
+    last_core = op.last_core()
+    middle_sites = [op.prepare_middle_site(k) for k in range(1, op.p - 1)]
+    return PreparedOperator(
+        p=op.p,
+        m=op.m,
+        n={k: n for k, n in enumerate(op.local_dims)},
+        first_core=first_core,
+        last_core=last_core,
+        middle_sites=middle_sites,
+    )
+
+
+def tt_matrix_vector_product(
+    prepared: PreparedOperator,
+    x_cores: TTLike,
+    max_rank: int = 100,
+    tolerance: float = 1e-10,
+    random_state: Optional[int] = None,
+    sample_rows: Optional[int] = None,
+    sample_cols: Optional[int] = None,
+    timing: bool = False,
+) -> Union[List[np.ndarray], Tuple[List[np.ndarray], Dict[str, float]]]:
+    """
+    Matrix-vector product between the TT operator described by ``prepared``
+    (from ``prepare_operator``) and a TT vector ``x_cores``, generalized to
+    variable per-dimension rank and an arbitrary band list.
+    """
+    x_list = _as_tt_cores(x_cores)
+
+    t: Dict[str, float] = {}
+    t0_all = time.perf_counter()
+
+    d = prepared.p
+    m = prepared.m
+    y_cores: List[np.ndarray] = []
+    residual: Optional[np.ndarray] = None
+
+    for k in range(d):
+        x_core = x_list[k]
+        s1, n_x, s2 = x_core.shape
+
+        # ---- middle dimensions: banded, block-diagonal-free ----
+        if 1 <= k < d - 1:
+            site = prepared.middle_sites[k - 1]
+            r_left, r_right, nk = site['r_left'], site['r_right'], site['n']
+
+            if residual is None:
+                raise ValueError("Residual must be initialized before middle core.")
+
+            r_prev, mid_dim = residual.shape
+            expected_dim = m * r_left * s1
+            if mid_dim != expected_dim:
+                raise ValueError(
+                    f"Expected residual shape (_, {expected_dim}), got {residual.shape}"
+                )
+
+            residual_reshaped = residual.reshape(r_prev, m, r_left, s1)
+
+            t0 = time.perf_counter()
+            H_all = np.einsum('rmci,ins->rmcns', residual_reshaped, x_core, optimize=True)
+            if timing:
+                t["einsum_H"] = t.get("einsum_H", 0.0) + (time.perf_counter() - t0)
+
+            r_next = m * r_right * s2
+            y_updated = np.zeros((r_prev, nk, r_next), dtype=x_core.dtype)
+            yu = y_updated.reshape(r_prev, nk, m, r_right, s2)
+
+            for (src, dst, BT, idx) in site['bands']:
+                t0 = time.perf_counter()
+                H = H_all[:, idx, src, :, :]
+                B = BT[idx]
+                Y = np.einsum('rmns,mtn->rmts', H, B, optimize=True)
+                yu[:, :, idx, dst, :] += Y.transpose(0, 2, 1, 3)
+                if timing:
+                    key = f"einsum_band_{src}_{dst}"
+                    t[key] = t.get(key, 0.0) + (time.perf_counter() - t0)
+
+            t0 = time.perf_counter()
+            y_updated, residual = truncate_tt_core_cur(
+                y_updated, max_rank=max_rank, tol=tolerance,
+                sample_rows=sample_rows, sample_cols=sample_cols, random_state=random_state,
+            )
+            if timing:
+                t["truncate"] = t.get("truncate", 0.0) + (time.perf_counter() - t0)
+
+            y_cores.append(y_updated)
+            continue
+
+        # ---- first / last dimensions: cheap, plain tensordot ----
+        M_core = prepared.first_core if k == 0 else prepared.last_core
+        r1, n_k, m_k, r2 = M_core.shape
+        if m_k != n_x:
+            raise ValueError(f"Mismatch at core {k}: matrix has {m_k}, vector has {n_x}")
+
+        t0 = time.perf_counter()
+        tmp = np.tensordot(M_core, x_core, axes=([2], [1]))
+        y_core = tmp.transpose(0, 3, 1, 2, 4).reshape(r1 * s1, n_k, r2 * s2)
+        if timing:
+            t["tensordot_Mx"] = t.get("tensordot_Mx", 0.0) + (time.perf_counter() - t0)
+
+        if residual is not None:
+            if residual.shape[1] != y_core.shape[0]:
+                raise ValueError(
+                    f"Residual mismatch: residual.shape[1]={residual.shape[1]} vs "
+                    f"y_core.shape[0]={y_core.shape[0]}"
+                )
+            t0 = time.perf_counter()
+            y_core = np.tensordot(residual, y_core, axes=(1, 0))
+            if timing:
+                t["tensordot_residual"] = t.get("tensordot_residual", 0.0) + (time.perf_counter() - t0)
+
+        t0 = time.perf_counter()
+        y_core, residual = truncate_tt_core_cur(
+            y_core, max_rank=max_rank, tol=tolerance,
+            sample_rows=sample_rows, sample_cols=sample_cols, random_state=random_state,
+        )
+        if timing:
+            t["truncate"] = t.get("truncate", 0.0) + (time.perf_counter() - t0)
+
+        y_cores.append(y_core)
+
+    if residual is not None:
+        last_core = y_cores[-1]
+        if last_core.shape[2] != residual.shape[0]:
+            raise ValueError(
+                f"Final residual mismatch: last_core.shape[2]={last_core.shape[2]} vs "
+                f"residual.shape[0]={residual.shape[0]}"
+            )
+        t0 = time.perf_counter()
+        y_cores[-1] = np.tensordot(last_core, residual, axes=(2, 0))
+        if timing:
+            t["final_tensordot"] = t.get("final_tensordot", 0.0) + (time.perf_counter() - t0)
+
+    if timing:
+        t["total"] = time.perf_counter() - t0_all
+        return y_cores, t
+
+    return y_cores
+
+
+# ======================================================================================
 # Factory helper for repeated operator application
 # ======================================================================================
 
@@ -510,19 +625,40 @@ def make_A_mv(
     """
     Build a callable ``A_mv(x_tt)`` that applies a TT operator to a TT vector.
 
-    Rules:
-    - 1 core  -> raise clear error
-    - 2 cores -> run directly without middle-core preparation
-    - >2 cores -> prepare middle-core blocks
+    Dispatch:
+    - ``generator_op`` is a ``TgStiffnessOperator`` (Sigma=None, constant, or
+      samplewise): uses ``prepare_operator`` + ``tt_matrix_vector_product``,
+      the generalized banded matvec -- the block-diagonal middle cores are
+      never materialized, regardless of whether Sigma is present.
+    - ``generator_op`` exposes ``tg_cores`` (a plain list of dense TT-operator
+      cores, or an object with a ``.tg_cores``/``.tt_cores`` attribute):
+      falls back to the original rank-2-only path (``use_general=False``,
+      1 core -> error, 2 cores -> direct, >2 cores -> ``blocks`` required)
+      or the fully general dense tensordot path (``use_general=True``).
     """
+    if isinstance(generator_op, TgStiffnessOperator):
+        prepared = prepare_operator(generator_op)
+
+        def A_mv(x_tt: TTLike) -> List[np.ndarray]:
+            return tt_matrix_vector_product(
+                prepared, x_tt,
+                max_rank=max_rank, tolerance=tolerance,
+                sample_rows=sample_rows, sample_cols=sample_cols,
+                random_state=random_state,
+            )
+
+        return A_mv
+
     if not hasattr(generator_op, "tg_cores"):
-        raise ValueError("`generator_op` must expose a `tg_cores` attribute.")
+        raise ValueError(
+            "`generator_op` must be a TgStiffnessOperator or expose a `tg_cores` attribute."
+        )
 
     tg_cores = [np.asarray(core) for core in generator_op.tg_cores]
     _validate_tt_matrix_cores(tg_cores, name="generator_op.tg_cores")
 
     d = len(tg_cores)
-    prepared: Optional[PreparedBlocks] = None
+    prepared_blocks: Optional[PreparedBlocks] = None
 
     if not use_general:
         if d == 1:
@@ -535,16 +671,16 @@ def make_A_mv(
                     "`blocks` must be provided when using the specialized operator with more than 2 cores."
                 )
             m = tg_cores[1].shape[0] // 2
-            prepared = prepare_blocks(blocks, m)
+            prepared_blocks = prepare_blocks(blocks, m)
 
-    def A_mv(x_tt: TTLike) -> List[np.ndarray]:
+    def A_mv_dense(x_tt: TTLike) -> List[np.ndarray]:
         if use_general:
             return tt_matrix_vector_product_general(tg_cores, x_tt)
 
         return tt_matrix_vector_product_csr_prepared(
             tg_cores,
             x_tt,
-            prepared=prepared,
+            prepared=prepared_blocks,
             max_rank=max_rank,
             tolerance=tolerance,
             sample_rows=sample_rows,
@@ -553,160 +689,245 @@ def make_A_mv(
             timing=False,
         )
 
-    return A_mv
+    return A_mv_dense
 
 
 # ======================================================================================
-# TT inner product
+# TT inner product, norm, column extraction, and dense conversions now live in
+# tensor_gedmd.operations.tt_operations (imported above for convenience /
+# backwards compatibility).
 # ======================================================================================
 
-def tt_inner_product(A: TTLike, B: TTLike) -> float:
-    """
-    Compute the TT inner product ``<A, B>`` between two TT vectors.
-    """
-    A_cores = _as_tt_cores(A)
-    B_cores = _as_tt_cores(B)
 
-    _validate_tt_vector_cores(A_cores, name="A_cores")
-    _validate_tt_vector_cores(B_cores, name="B_cores")
 
-    if len(A_cores) != len(B_cores):
-        raise ValueError(
-            f"TT operands must have the same number of cores; got {len(A_cores)} and {len(B_cores)}."
+
+
+
+
+
+
+
+
+# ======================================================================================
+# Reduced generator matrix A_r, computed directly from a stiffness operator
+# and a reduced TT basis U (from global_svd_tt), without ever materializing
+# the full stiffness TT operator.
+#
+# Ported from a supplied reference implementation and adapted to
+# tensor_gedmd.reps.stiffness_tt.TgStiffnessOperator's actual conventions:
+# 0-indexed lists (self.psi, self.dpsi, self.local_dims) rather than
+# 1-indexed dict keys, dpsi already normalized to plain 2D arrays, and
+# `sigma_mode` / `Sigma_prepared` for the None / constant / samplewise
+# diffusion tensor.
+#
+# Two fixes relative to the reference version:
+#   - the reference version reused a single basis size `n` for every
+#     dimension when reshaping cores; this breaks whenever dimensions have
+#     different basis sizes (e.g. dims=[4, 5, 6] as used elsewhere in this
+#     package). Here each core uses its own local dimension.
+#   - the reference version assumed op.Sigma is always a real array in the
+#     "constant" mode; TgStiffnessOperator's constant mode also covers the
+#     Sigma=None (implicit identity) case, which is handled explicitly below.
+# ======================================================================================
+
+def _fmt(sec: float) -> str:
+    return f"{sec * 1000:.1f} ms" if sec < 1 else f"{sec:.3f} s"
+
+
+def _truncate_core(core: np.ndarray, cap: int) -> np.ndarray:
+    """
+    Hard-cap a TT core's bond dimensions to at most `cap` (simple slicing,
+    not an SVD-based truncation -- use this only as a cheap/approximate cap).
+    """
+    rL, n, rR = core.shape
+    return core[:min(rL, cap), :, :min(rR, cap)]
+
+
+def _process_chunk(
+    l_start: int,
+    l_end: int,
+    op: Any,
+    U_cores: List[np.ndarray],
+    p: int,
+    bonds: List[int],
+    r: int,
+) -> Tuple[int, int, np.ndarray]:
+    """
+    Compute W_chunk[l, c, j] = the derivative of reduced basis function j
+    (from U_cores) with respect to physical dimension c, evaluated at each
+    sample l in [l_start, l_end), by carrying both the plain (undifferentiated)
+    TT contraction and, for every dimension c, the contraction with dpsi
+    substituted at site c, through U's cores in a single left-to-right sweep.
+    """
+    L = l_end - l_start
+
+    # ---- dimension 0 ----
+    U0 = U_cores[0]
+    psi0 = op.psi[0][:, l_start:l_end]
+    dpsi0 = op.dpsi[0][:, l_start:l_end]
+
+    carry_base = np.einsum('isb,sl->lb', U0, psi0, optimize=True)
+    d0 = np.einsum('isb,sl->lb', U0, dpsi0, optimize=True)
+    del psi0, dpsi0
+
+    carry_diff = np.empty((L, p, carry_base.shape[1]), dtype=np.float64)
+    for c in range(p):
+        carry_diff[:, c, :] = d0 if c == 0 else carry_base
+    del d0
+
+    # ---- middle dimensions 1, ..., p-2 ----
+    for k in range(1, p - 1):
+        Uk = U_cores[k]
+        rL_k = bonds[k]
+        rR_k = bonds[k + 1]
+        n_k = op.local_dims[k]
+        c_k = k
+
+        psi_k = op.psi[k][:, l_start:l_end]
+        dpsi_k = op.dpsi[k][:, l_start:l_end]
+
+        Uk_flat = Uk.reshape(rL_k, n_k * rR_k)
+
+        tmp_base = (carry_base @ Uk_flat).reshape(L, n_k, rR_k)
+        new_base = np.einsum('lsb,sl->lb', tmp_base, psi_k, optimize=True)
+
+        tmp_diff = (carry_diff.reshape(L * p, rL_k) @ Uk_flat).reshape(L, p, n_k, rR_k)
+        new_diff = np.einsum('lcnb,nl->lcb', tmp_diff, psi_k, optimize=True)
+        new_diff[:, c_k, :] = np.einsum('lsb,sl->lb', tmp_base, dpsi_k, optimize=True)
+
+        del psi_k, dpsi_k, Uk_flat, tmp_base, tmp_diff
+        carry_base = new_base
+        carry_diff = new_diff
+
+    # ---- last dimension p-1 ----
+    Up = U_cores[-1]
+    rL_last = bonds[p - 1]
+    n_last = op.local_dims[p - 1]
+    Up_flat = Up.reshape(rL_last, n_last * r)
+
+    psi_last = op.psi[p - 1][:, l_start:l_end]
+    dpsi_last = op.dpsi[p - 1][:, l_start:l_end]
+
+    carryUp = (carry_diff.reshape(L * p, rL_last) @ Up_flat).reshape(L, p, n_last, r)
+
+    W_chunk = np.empty((L, p, r), dtype=np.float64)
+    if p > 1:
+        W_chunk[:, :p - 1, :] = np.einsum(
+            'nl,lcnj->lcj', psi_last, carryUp[:, :p - 1, :, :], optimize=True
         )
+    W_chunk[:, p - 1, :] = np.einsum(
+        'nl,lnj->lj', dpsi_last, carryUp[:, p - 1, :, :], optimize=True
+    )
 
-    for k, (A_core, B_core) in enumerate(zip(A_cores, B_cores)):
-        if A_core.shape[1] != B_core.shape[1]:
-            raise ValueError(
-                f"Mode mismatch at core {k}: A has mode {A_core.shape[1]}, "
-                f"B has mode {B_core.shape[1]}."
-            )
-
-    if len(A_cores) == 0:
-        return 0.0
-
-    A1 = A_cores[0]
-    B1 = B_cores[0]
-
-    rA0, n1, rA1 = A1.shape
-    rB0, _, rB1 = B1.shape
-
-    v = np.zeros((rA0 * rB0, rA1 * rB1), dtype=np.result_type(A1.dtype, B1.dtype))
-    for i in range(n1):
-        v += np.kron(A1[:, i, :], B1[:, i, :])
-
-    for k in range(1, len(A_cores)):
-        Ak = A_cores[k]
-        Bk = B_cores[k]
-
-        _, n_k, rA_next = Ak.shape
-        _, _, rB_next = Bk.shape
-
-        new_v = np.zeros((v.shape[0], rA_next * rB_next), dtype=np.result_type(Ak.dtype, Bk.dtype))
-        for ik in range(n_k):
-            kron_prod = np.kron(Ak[:, ik, :], Bk[:, ik, :])
-            new_v += v @ kron_prod
-        v = new_v
-
-    v = np.squeeze(v)
-    if np.ndim(v) == 0:
-        return float(v.item())
-    if v.size == 1:
-        return float(v.reshape(-1)[0])
-
-    return float(np.linalg.norm(v))
+    del carry_diff, carry_base, carryUp, psi_last, dpsi_last
+    return l_start, l_end, W_chunk
 
 
-def tt_norm(x: TTLike) -> float:
+def compute_A_r(
+    op: Any,
+    U_cores: TTLike,
+    r: int,
+    chunk_size: int = 100,
+    n_workers: Optional[int] = None,
+    r_cap: Optional[int] = None,
+) -> np.ndarray:
     """
-    Compute the Euclidean norm of a TT vector.
+    Compute the reduced (Galerkin-projected) generator matrix
+
+        A_r[i, j] = -1/(2m) * sum_l sum_{c,c'} Sigma_{c,c'}(l) *
+                    d/dx_c u_i(x_l) * d/dx_{c'} u_j(x_l)
+
+    directly from a stiffness operator ``op`` (a
+    ``tensor_gedmd.reps.stiffness_tt.TgStiffnessOperator``) and a reduced TT
+    basis ``U_cores`` (typically from ``global_svd_tt``), without ever
+    materializing the full stiffness TT operator. Sample chunks are processed
+    in parallel via a thread pool.
+
+    Parameters
+    ----------
+    op : TgStiffnessOperator
+        Provides ``p``, ``m``, ``psi``, ``dpsi``, ``local_dims``,
+        ``sigma_mode``, and ``Sigma_prepared``.
+    U_cores : TT or list of np.ndarray
+        The reduced basis, with exactly ``op.p`` cores.
+    r : int
+        Retained rank of ``U_cores`` (the last core's right bond dimension).
+    chunk_size : int, default=100
+        Number of samples processed per chunk/task.
+    n_workers : int, optional
+        Number of worker threads. Defaults to ``min(4, cpu_count() // 2)``.
+    r_cap : int, optional
+        If given and smaller than ``r``, hard-caps every core's bond
+        dimensions to at most ``r_cap`` before computing (cheap/approximate).
+
+    Returns
+    -------
+    A_r : np.ndarray
+        Symmetrized reduced generator matrix of shape (r, r).
     """
-    return float(np.sqrt(max(tt_inner_product(x, x), 0.0)))
+    t0 = time.perf_counter()
+    p, m = op.p, op.m
 
+    if p < 2:
+        raise ValueError("compute_A_r requires at least 2 physical dimensions.")
 
-class TTInnerProductMixin:
-    """
-    Small mixin adding the `@` operator to TT-vector-like classes.
-    """
+    U_cores = _as_tt_cores(U_cores)
+    if len(U_cores) != p:
+        raise ValueError(f"Expected {p} U_cores, got {len(U_cores)}")
 
-    tt_cores: List[np.ndarray]
+    if r_cap is not None and r_cap < r:
+        U_cores = [_truncate_core(c, r_cap) for c in U_cores]
+        r = U_cores[-1].shape[2]
 
-    def __matmul__(self, other: TTLike) -> float:
-        return tt_inner_product(self, other)
+    if n_workers is None:
+        n_workers = min(4, max(1, (os.cpu_count() or 2) // 2))
 
+    bonds = [c.shape[0] for c in U_cores] + [r]
 
-# ======================================================================================
-# Utility helpers
-# ======================================================================================
+    print(f"  [compute_A_r] p={p}  m={m}  r={r}  chunk={chunk_size}  workers={n_workers}")
 
-def extract_tt_column(U_cores: TTLike, i: int) -> List[np.ndarray]:
-    """
-    Extract the `i`-th column of a TT-matrix-like last core as a TT vector.
-    """
-    cores = _as_tt_cores(U_cores)
-    if len(cores) == 0:
-        raise ValueError("`U_cores` must contain at least one core.")
+    W_full = np.zeros((m, p, r), dtype=np.float64)
+    chunks = [(s, min(s + chunk_size, m)) for s in range(0, m, chunk_size)]
+    completed = 0
 
-    x_tt = [G.copy() for G in cores]
-    last = x_tt[-1]
+    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+        futures = {
+            pool.submit(_process_chunk, s, e, op, U_cores, p, bonds, r): (s, e)
+            for s, e in chunks
+        }
+        for fut in as_completed(futures):
+            l_start, l_end, W_chunk = fut.result()
+            W_full[l_start:l_end] = W_chunk
+            completed += 1
+            if completed % 5 == 0 or completed == len(chunks):
+                print(
+                    f"    chunks {completed}/{len(chunks)} ({100 * l_end / m:.0f}%)  "
+                    f"elapsed {_fmt(time.perf_counter() - t0)}",
+                    flush=True,
+                )
 
-    if last.ndim != 3:
-        raise ValueError(
-            "The last core must have shape (r_prev, n, r) for column extraction; "
-            f"got {last.shape}."
-        )
+    if op.sigma_mode == "constant":
+        Sigma = op.Sigma_prepared
+        if Sigma is None:
+            # No Sigma at all: TgStiffnessOperator's own convention uses
+            # scale -1/m for this case (not -1/(2m), which applies only
+            # when a real Sigma matrix is present) -- see has_sigma in
+            # tensor_gedmd.reps.stiffness_tt.TgStiffnessOperator.
+            SW = W_full
+            prefactor = -(1.0 / m)
+        else:
+            SW = np.tensordot(Sigma, W_full, axes=([1], [1]))
+            SW = np.moveaxis(SW, 0, 1)
+            prefactor = -(1.0 / (2.0 * m))
+    else:
+        SW = np.einsum('abl,lbj->laj', op.Sigma_prepared, W_full, optimize=True)
+        prefactor = -(1.0 / (2.0 * m))
 
-    if not (0 <= i < last.shape[2]):
-        raise IndexError(f"Column index {i} out of bounds for last core with shape {last.shape}.")
+    W2 = W_full.reshape(-1, r)
+    SW2 = SW.reshape(-1, r)
+    A_r = W2.T @ SW2
+    A_r *= prefactor
+    A_r = 0.5 * (A_r + A_r.T)
 
-    x_tt[-1] = last[:, :, i].reshape(last.shape[0], last.shape[1], 1)
-    return x_tt
-
-
-# ======================================================================================
-# Optional dense-reference utilities for testing / debugging
-# ======================================================================================
-
-def tt_vector_to_dense(x: TTLike) -> np.ndarray:
-    """
-    Convert a TT vector to a dense NumPy array.
-    """
-    cores = _as_tt_cores(x)
-    _validate_tt_vector_cores(cores)
-
-    result = cores[0][0, :, :]
-    for core in cores[1:]:
-        result = np.tensordot(result, core, axes=([-1], [0]))
-    return np.squeeze(result, axis=-1)
-
-
-def tt_matrix_to_dense(M: TTLike) -> np.ndarray:
-    """
-    Convert a TT matrix to a dense NumPy array with interleaved input/output modes.
-    """
-    cores = _as_tt_cores(M)
-    _validate_tt_matrix_cores(cores)
-
-    result = cores[0][0, :, :, :]
-    for core in cores[1:]:
-        result = np.tensordot(result, core, axes=([-1], [0]))
-
-    result = np.squeeze(result, axis=-1)
-
-    d = len(cores)
-    n_dims = [core.shape[1] for core in cores]
-    m_dims = [core.shape[2] for core in cores]
-
-    perm_n = list(range(0, 2 * d, 2))
-    perm_m = list(range(1, 2 * d, 2))
-    result = result.transpose(*(perm_n + perm_m))
-    return result.reshape(*n_dims, *m_dims)
-
-
-
-
-
-
-
-
-
+    print(f"  [compute_A_r] TOTAL {_fmt(time.perf_counter() - t0)}")
+    return A_r
