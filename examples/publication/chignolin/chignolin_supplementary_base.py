@@ -9,7 +9,7 @@ orchestration in chignolin_supplementary.py.
 The idea: at a given TICA embedding dimension, build an RFF/TT-gEDMD basis
 at some bandwidth sigma_omega, truncate the global SVD at some tolerance,
 and see what leading eigenvalues (kappa_1, kappa_2) and TT rank come out.
-chignolin_supplementary.py imports load_raw_data / fit_tica_and_diffusion /
+chignolin_supplementary.py imports fit_tica_and_diffusion /
 subsample_one_repeat / solve_one from here, and wraps solve_one in a loop
 over TICA_DIMS x N_REPEATS x SIGMA_LIST x SVD_TOLS to produce
 chignolin_supplementary_results.npz (the actual paper figure's data).
@@ -18,17 +18,21 @@ Run this file directly for a quick, single-experiment demo -- one fixed
 (dim, sigma, tol) combination, no repeats, no sweep, no plot. Confirms the
 pipeline runs correctly on your data before committing to the full sweep.
 
-Diffusion tensor: estimated from the underlying atomic coordinates via a
-Jacobian of pairwise CA-CA distances (jax), projected onto the TICA
-directions -- same real, data-dependent computation as
-chignolin/run_calculation_threshold_and_dim_sweep.py, kept verbatim since
-it has no tensor_gedmd equivalent.
+Data: this loads the precomputed cln_tica.npy / cln_diff.npy (TICA fit
+once at dim=10, diffusion tensor projected onto all 10 directions --
+validated to give bit-for-bit identical results to fitting/projecting
+separately at a smaller dimension and slicing). If you only have the raw
+data (cln_tica.pkl, cln_atomic.pkl, chi_vac.pdb -- the last of which is
+large, a real jax Jacobian computation), run build_precomputed_data.py
+once first to generate these two files; every calculation script here
+uses the precomputed files directly and never touches the raw data or
+needs jax/mdtraj/deeptime.
 
 Requirements
 ------------
-- `deeptime`, `mdtraj`, `jax` importable.
-- Data files at CG_PICKLE_PATH / CG_ATOMIC_NUMBERS_PATH / PDB_PATH below
-  (see data/README.md).
+Just `numpy`/`scipy` plus `tensor_gedmd` itself -- no jax/mdtraj/deeptime
+needed, since TICA and the diffusion tensor are already precomputed. See
+data/README.md.
 
 Usage
 -----
@@ -37,12 +41,7 @@ Usage
 
 from __future__ import annotations
 
-import gc
-import itertools
 import os
-import pickle
-import sys
-import time
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -63,26 +62,20 @@ from tensor_gedmd.reps.transformed_data_tensor import Transformed_Data_Tensor_TT
 DATA_DIR = Path(os.environ.get(
     "CHIGNOLIN_DATA_DIR", str(Path(__file__).resolve().parent / "data")
 ))
-CG_PICKLE_PATH = DATA_DIR / "cln_tica.pkl"
-CG_ATOMIC_NUMBERS_PATH = DATA_DIR / "cln_atomic.pkl"
-PDB_PATH = DATA_DIR / "chi_vac.pdb"
+CG_TICA_NPY_PATH = Path(os.environ.get("CHIGNOLIN_TICA_NPY", str(DATA_DIR / "cln_tica.npy")))
+CG_DIFF_NPY_PATH = Path(os.environ.get("CHIGNOLIN_DIFF_NPY", str(DATA_DIR / "cln_diff.npy")))
 
 # ----------------------------------------------------------------------
-# Physical/pipeline constants (verbatim from the source notebooks) -- these
-# are the same regardless of which (dim, sigma, tol) combination is being
-# tested, so they live here rather than in the sweep-orchestration file.
+# Physical/pipeline constants -- these are the same regardless of which
+# (dim, sigma, tol) combination is being tested, so they live here rather
+# than in the sweep-orchestration file. MAX_DIM_AVAILABLE must match
+# whatever dimension build_precomputed_data.py fit TICA at (10 by default).
 # ----------------------------------------------------------------------
+MAX_DIM_AVAILABLE = 10
 R_TRUN_MAP = {3: 300, 4: 500, 6: 2000, 8: 99999, 10: 99999}
-LAGTIME = 15
 TARGET_M = 6000
 N_BASIS = 10
 NEV = 20
-
-M_MASS = 12.0
-T_K = 300.0
-GAMMA = 0.1
-K_B = 8.314462e-3
-BETA = 1.0 / (K_B * T_K)
 
 
 def rff_omega(n: int, sigma: float) -> np.ndarray:
@@ -90,85 +83,45 @@ def rff_omega(n: int, sigma: float) -> np.ndarray:
 
 
 # ============================================================
-# Raw data + diffusion tensor
+# Data loading (precomputed -- no jax/mdtraj/deeptime needed)
 # ============================================================
 
-def load_raw_data():
-    import mdtraj as md
-    import jax.numpy as jnp
-    from jax import jacrev, vmap
-
-    print("Loading raw data ...")
-    trajectories = []
-    with open(CG_PICKLE_PATH, "rb") as f:
-        for traj in pickle.load(f)["x"]:
-            trajectories.append(traj)
-    print(f"  {len(trajectories)} trajectories (first: {trajectories[0].shape})")
-
-    top = md.load_topology(PDB_PATH)
-    CA_atoms = top.select("name CA")
-
-    with open(CG_ATOMIC_NUMBERS_PATH, "rb") as f:
-        x_atomic = np.concatenate(
-            [d.xyz[:, CA_atoms] for d in pickle.load(f)["x"]], axis=0
+def fit_tica_and_diffusion(tica_dim: int):
+    """
+    Load the precomputed TICA coordinates and diffusion tensor, sliced to
+    tica_dim. Call this ONCE per tica_dim, then subsample_one_repeat(...)
+    as many times as you like against the same pool (cheap).
+    """
+    if tica_dim > MAX_DIM_AVAILABLE:
+        raise ValueError(
+            f"tica_dim={tica_dim} exceeds MAX_DIM_AVAILABLE={MAX_DIM_AVAILABLE} -- "
+            f"re-run build_precomputed_data.py with a higher MAX_DIM if you need this."
         )
 
-    CA_comb = np.array(list(itertools.combinations(np.arange(len(CA_atoms)), 2)))
+    tica_data_full = np.load(CG_TICA_NPY_PATH, allow_pickle=True)
+    diff_full = np.load(CG_DIFF_NPY_PATH, allow_pickle=True)
 
-    def distances(t):
-        return jnp.linalg.norm(t[CA_comb[:, 1]] - t[CA_comb[:, 0]], axis=1)
-
-    def jac(x):
-        return jacrev(distances, argnums=0)(x)
-
-    print("  Jacobian (vmap) ...", end="", flush=True)
-    t0 = time.perf_counter()
-    diff_full = vmap(jac, in_axes=(0,), out_axes=0)(x_atomic).transpose(1, 2, 3, 0)
-    print(f" done ({time.perf_counter() - t0:.1f}s)  shape: {diff_full.shape}")
-    del x_atomic
-    gc.collect()
-    return trajectories, np.asarray(diff_full)
-
-
-def fit_tica_and_diffusion(trajectories, diff_full, tica_dim: int):
-    """
-    The expensive, per-dimension-only-once part: fit TICA and project the
-    diffusion tensor onto the TICA directions for the full data pool.
-    Call this ONCE per tica_dim, then subsample_one_repeat(...) as many
-    times as you like against the same fit (cheap).
-    """
-    from deeptime import decomposition
-
-    t0 = time.perf_counter()
-    tica = decomposition.TICA(lagtime=LAGTIME, dim=tica_dim)
-    tica_model = tica.fit(trajectories).fetch_model()
-    tica_data = tica_model.transform(trajectories).reshape(-1, tica_dim).T
-    eigs_sv = tica_model.singular_values
-    eigvec = tica_model.singular_vectors_left[:, np.argsort(eigs_sv)[::-1]]
+    tica_data = tica_data_full[:tica_dim, :]
+    dmat_full = diff_full[:tica_dim, :tica_dim, :]
     N_total = tica_data.shape[1]
-    print(f"  TICA done ({time.perf_counter() - t0:.2f}s)  pool={N_total} frames")
-
-    dtr = np.einsum("ijlr,ik->kjlr", diff_full, eigvec[:, :tica_dim])
     r_trun = R_TRUN_MAP[tica_dim]
-    return tica_data, dtr, N_total, r_trun
+
+    print(f"  dim={tica_dim} loaded  pool={N_total} frames")
+    return tica_data, dmat_full, N_total, r_trun
 
 
 def subsample_one_repeat(
-    tica_data: np.ndarray, dtr: np.ndarray, N_total: int, seed: int,
+    tica_data: np.ndarray, dmat_full: np.ndarray, N_total: int, seed: int,
     target_m: int = TARGET_M,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     The cheap, per-repeat part: draw one random subsample of target_m
-    frames from the already-fit TICA pool, and build its diffusion tensor.
+    frames from the already-loaded TICA pool.
     """
     rng = np.random.default_rng(seed)
     idx = np.sort(rng.choice(N_total, size=target_m, replace=False))
     Xlist = tica_data[:, idx]
-
-    dtr_idx = dtr[:, :, :, idx]
-    dmat = (2.0 / BETA / M_MASS / GAMMA) * np.einsum("gikl,hikl->ghl", dtr_idx, dtr_idx)
-    del dtr_idx
-    gc.collect()
+    dmat = dmat_full[:, :, idx]
     return Xlist, dmat
 
 
@@ -227,9 +180,8 @@ if __name__ == "__main__":
     DEMO_TOL = 1e-5
     DEMO_SEED = 42
 
-    trajectories, diff_full = load_raw_data()
-    tica_data, dtr, N_total, r_trun = fit_tica_and_diffusion(trajectories, diff_full, DEMO_TICA_DIM)
-    Xlist, dmat = subsample_one_repeat(tica_data, dtr, N_total, DEMO_SEED)
+    tica_data, dmat_full, N_total, r_trun = fit_tica_and_diffusion(DEMO_TICA_DIM)
+    Xlist, dmat = subsample_one_repeat(tica_data, dmat_full, N_total, DEMO_SEED)
 
     res = solve_one(Xlist, dmat, DEMO_SIGMA_RFF, r_trun, DEMO_TOL)
 

@@ -7,7 +7,7 @@ subsamples for error bars, for TICA dimensions 3, 4, 6, 8, and 10.
 
 This file is the sweep/repeat orchestration only -- it imports the actual
 "what does one experiment compute" logic from chignolin_supplementary_base.py
-(load_raw_data, fit_tica_and_diffusion, subsample_one_repeat, solve_one) and
+(fit_tica_and_diffusion, subsample_one_repeat, solve_one) and
 wraps it in loops over TICA_DIMS x N_REPEATS x SIGMA_LIST x SVD_TOLS. See
 that file to understand the idea on its own, or run it directly for a quick
 single-experiment demo without the full sweep.
@@ -21,9 +21,9 @@ that split, so there's no need to reproduce it.
 
 Requirements
 ------------
-- `deeptime`, `mdtraj`, `jax` importable.
-- Data files at CG_PICKLE_PATH / CG_ATOMIC_NUMBERS_PATH / PDB_PATH (see
-  chignolin_supplementary_base.py / data/README.md).
+Just `numpy`/`scipy` plus `tensor_gedmd` itself -- no jax/mdtraj/deeptime
+needed, since TICA and the diffusion tensor are already precomputed. See
+chignolin_supplementary_base.py / data/README.md.
 
 Usage
 -----
@@ -42,9 +42,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "common"))
 from results_io import save_results  # noqa: E402
 
 from chignolin_supplementary_base import (
-    R_TRUN_MAP,
     fit_tica_and_diffusion,
-    load_raw_data,
     solve_one,
     subsample_one_repeat,
 )
@@ -53,7 +51,7 @@ RESULTS_PATH = Path(__file__).resolve().parent / "results" / "chignolin_suppleme
 
 # ----------------------------------------------------------------------
 # Sweep/repeat configuration (verbatim from the source notebooks). Physical
-# constants (LAGTIME, TARGET_M, N_BASIS, ...) live in
+# constants (TARGET_M, N_BASIS, ...) live in
 # chignolin_supplementary_base.py, since they're the same regardless of
 # which combination is being swept.
 # ----------------------------------------------------------------------
@@ -72,8 +70,6 @@ if QUICK_TEST:
 
 
 def main() -> None:
-    trajectories, diff_full = load_raw_data()
-
     n_dims, n_sigmas, n_tols = len(TICA_DIMS), len(SIGMA_LIST), len(SVD_TOLS)
     rank_mean = np.full((n_dims, n_sigmas, n_tols), np.nan)
     ev0_mean = np.full((n_dims, n_sigmas, n_tols), np.nan)
@@ -86,15 +82,15 @@ def main() -> None:
     for i_dim, tica_dim in enumerate(TICA_DIMS):
         print(f"\n{'=' * 70}\n  tica_dim = {tica_dim}\n{'=' * 70}")
 
-        # Expensive TICA fit + diffusion projection: once per dim.
-        tica_data, dtr, N_total, r_trun = fit_tica_and_diffusion(trajectories, diff_full, tica_dim)
+        # Loaded once per dim (cheap -- just a slice of the precomputed data).
+        tica_data, dmat_full, N_total, r_trun = fit_tica_and_diffusion(tica_dim)
 
         raw = {sigma: {tol: [] for tol in SVD_TOLS} for sigma in SIGMA_LIST}
 
         for rep in range(N_REPEATS):
             seed = BASE_SEED + rep
-            # Cheap: draw one subsample against the already-fit TICA pool.
-            Xlist, dmat = subsample_one_repeat(tica_data, dtr, N_total, seed)
+            # Cheap: draw one subsample against the already-loaded pool.
+            Xlist, dmat = subsample_one_repeat(tica_data, dmat_full, N_total, seed)
 
             for sigma_rff in SIGMA_LIST:
                 print(f"  repeat {rep + 1}/{N_REPEATS}  sigma={sigma_rff}", flush=True)
@@ -108,7 +104,7 @@ def main() -> None:
 
             del Xlist, dmat
 
-        del tica_data, dtr
+        del tica_data, dmat_full
 
         for i_sig, sigma_rff in enumerate(SIGMA_LIST):
             for i_tol, tol in enumerate(SVD_TOLS):

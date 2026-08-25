@@ -39,8 +39,8 @@ the original faithfully; the measured "incremental" runtime here will be
 somewhat conservative (slower) than the original notebook's, since it's
 missing that extra caching layer.
 
-run_calculation_scratch_vs_incremental.py imports load_raw_data / tica_pool
-/ run_scratch_one_dim / run_incremental_all_dims from here and wraps them
+run_calculation_scratch_vs_incremental.py imports tica_pool /
+run_scratch_one_dim / run_incremental_all_dims from here and wraps them
 in a loop over N_RUNS independent seeds to produce
 chignolin_scratch_vs_incremental_results.npz (the actual paper figure's
 data).
@@ -50,10 +50,21 @@ seed, scratch vs incremental across all DIMS, no repeats, no plot. Confirms
 scratch and incremental actually agree on your data before committing to
 the full N_RUNS repeats.
 
+Data: this loads the precomputed cln_tica.npy / cln_diff.npy (TICA fit
+once at dim=10, diffusion tensor projected onto all 10 directions --
+validated to give bit-for-bit identical results to fitting/projecting
+separately at a smaller dimension and slicing). If you only have the raw
+data (cln_tica.pkl, cln_atomic.pkl, chi_vac.pdb -- the last of which is
+large, a real jax Jacobian computation), run build_precomputed_data.py
+once first to generate these two files; every calculation script here
+uses the precomputed files directly and never touches the raw data or
+needs jax/mdtraj/deeptime.
+
 Requirements
 ------------
-Same as run_calculation_threshold_and_dim_sweep_base.py:
-`deeptime`, `mdtraj`, `jax` importable, and the same data files.
+Just `numpy`/`scipy` plus `tensor_gedmd` itself -- no jax/mdtraj/deeptime
+needed, since TICA and the diffusion tensor are already precomputed. See
+data/README.md.
 
 Usage
 -----
@@ -63,10 +74,7 @@ Usage
 from __future__ import annotations
 
 import gc
-import itertools
 import os
-import pickle
-import sys
 import time
 from pathlib import Path
 from typing import Dict, List
@@ -88,29 +96,23 @@ from tensor_gedmd.reps.transformed_data_tensor import Transformed_Data_Tensor_TT
 DATA_DIR = Path(os.environ.get(
     "CHIGNOLIN_DATA_DIR", str(Path(__file__).resolve().parent / "data")
 ))
-CG_PICKLE_PATH = DATA_DIR / "cln_tica.pkl"
-CG_ATOMIC_NUMBERS_PATH = DATA_DIR / "cln_atomic.pkl"
-PDB_PATH = DATA_DIR / "chi_vac.pdb"
+CG_TICA_NPY_PATH = Path(os.environ.get("CHIGNOLIN_TICA_NPY", str(DATA_DIR / "cln_tica.npy")))
+CG_DIFF_NPY_PATH = Path(os.environ.get("CHIGNOLIN_DIFF_NPY", str(DATA_DIR / "cln_diff.npy")))
 
 # ----------------------------------------------------------------------
-# Physical/pipeline constants (verbatim from the source notebook) -- the
-# same regardless of which seed is being tested, so they live here rather
-# than in the repeat-orchestration file. DIMS in particular is the fixed
-# sequence of dimensions to sweep for EVERY seed, not something that varies
-# per repeat.
+# Physical/pipeline constants -- the same regardless of which seed is
+# being tested, so they live here rather than in the repeat-orchestration
+# file. DIMS in particular is the fixed sequence of dimensions to sweep
+# for EVERY seed, not something that varies per repeat.
+# MAX_DIM_AVAILABLE must match whatever dimension build_precomputed_data.py
+# fit TICA at (10 by default).
 # ----------------------------------------------------------------------
+MAX_DIM_AVAILABLE = 10
 N_BASIS = 10
 SIGMA_RFF = 25
-LAGTIME = 15
 TARGET_M = 6000
 NEV = 40
 EPS_EV = 0.0
-
-M_MASS = 12.0
-T_K = 300.0
-GAMMA = 0.1
-K_B = 8.314462e-3
-BETA = 1.0 / (K_B * T_K)
 
 # Truncation held constant across every dimension -- keeps the incremental
 # chain from crossing a tol/rank regime boundary (see original notebook's
@@ -127,75 +129,37 @@ def rff_omega(n: int, sigma: float) -> np.ndarray:
 
 
 # ============================================================
-# Raw data + diffusion tensor
+# Data loading (precomputed -- no jax/mdtraj/deeptime needed)
 # ============================================================
-
-def load_raw_data():
-    import mdtraj as md
-    import jax.numpy as jnp
-    from jax import jacrev, vmap
-
-    print("Loading raw data ...")
-    trajectories = []
-    with open(CG_PICKLE_PATH, "rb") as f:
-        for traj in pickle.load(f)["x"]:
-            trajectories.append(traj)
-
-    top = md.load_topology(PDB_PATH)
-    CA_atoms = top.select("name CA")
-    n_ca = len(CA_atoms)
-
-    with open(CG_ATOMIC_NUMBERS_PATH, "rb") as f:
-        x_atomic = np.concatenate(
-            [d.xyz[:, CA_atoms] for d in pickle.load(f)["x"]], axis=0
-        )
-
-    CA_comb = np.array(list(itertools.combinations(np.arange(n_ca), 2)))
-
-    def distances(t):
-        return jnp.linalg.norm(t[CA_comb[:, 1]] - t[CA_comb[:, 0]], axis=1)
-
-    def jac(x):
-        return jacrev(distances, argnums=0)(x)
-
-    print("  Jacobian (vmap) ...", end="", flush=True)
-    t0 = time.perf_counter()
-    diff_full = vmap(jac, in_axes=(0,), out_axes=0)(x_atomic).transpose(1, 2, 3, 0)
-    print(f" done ({time.perf_counter() - t0:.1f}s)  shape: {diff_full.shape}")
-    del x_atomic
-    gc.collect()
-    return trajectories, np.asarray(diff_full)
-
 
 _TICA_POOL: dict = {}
 
 
-def tica_pool(trajectories, tica_dim: int):
-    """Fits TICA once per dim, cached -- shared across every seed/repeat,
-    since the TICA fit itself doesn't depend on which subsample is drawn."""
-    from deeptime import decomposition
-
+def tica_pool(tica_dim: int):
+    """Loads (and caches) the precomputed TICA coordinates and diffusion
+    tensor, sliced to tica_dim -- shared across every seed/repeat, since
+    the data itself doesn't depend on which subsample is drawn."""
+    if tica_dim > MAX_DIM_AVAILABLE:
+        raise ValueError(
+            f"tica_dim={tica_dim} exceeds MAX_DIM_AVAILABLE={MAX_DIM_AVAILABLE} -- "
+            f"re-run build_precomputed_data.py with a higher MAX_DIM if you need this."
+        )
     if tica_dim not in _TICA_POOL:
-        tica_model = decomposition.TICA(lagtime=LAGTIME, dim=tica_dim).fit(trajectories).fetch_model()
-        tica_data = tica_model.transform(trajectories).reshape(-1, tica_dim).T
-        eigs_sv = tica_model.singular_values
-        eigvec = tica_model.singular_vectors_left[:, np.argsort(eigs_sv)[::-1]][:, :tica_dim]
+        tica_data_full = np.load(CG_TICA_NPY_PATH, allow_pickle=True)
+        diff_full = np.load(CG_DIFF_NPY_PATH, allow_pickle=True)
+        tica_data = tica_data_full[:tica_dim, :]
+        dmat_full = diff_full[:tica_dim, :tica_dim, :]
         N_total = tica_data.shape[1]
-        _TICA_POOL[tica_dim] = (tica_data, eigvec, N_total)
+        _TICA_POOL[tica_dim] = (tica_data, dmat_full, N_total)
     return _TICA_POOL[tica_dim]
 
 
-def get_tica_data(trajectories, diff_full, tica_dim: int, seed: int):
-    tica_data, eigvec, N_total = tica_pool(trajectories, tica_dim)
+def get_tica_data(tica_dim: int, seed: int):
+    tica_data, dmat_full, N_total = tica_pool(tica_dim)
     rng = np.random.default_rng(seed)
     idx = np.sort(rng.choice(N_total, size=TARGET_M, replace=False))
     Xlist = tica_data[:, idx]
-
-    diff_sub = diff_full[:, :, :, idx]
-    dtr = np.einsum("ijlr,ik->kjlr", diff_sub, eigvec)
-    dmat = (2.0 / BETA / M_MASS / GAMMA) * np.einsum("gikl,hikl->ghl", dtr, dtr)
-    del dtr, diff_sub
-    gc.collect()
+    dmat = dmat_full[:, :, idx]
     return Xlist, dmat
 
 
@@ -216,11 +180,11 @@ def whiten_and_eig(Z, reduced_matrix, nev=NEV, eps_ev=EPS_EV):
 # Scratch (from-scratch) pipeline: one dimension, independent of others.
 # ============================================================
 
-def run_scratch_one_dim(trajectories, diff_full, tica_dim, seed):
+def run_scratch_one_dim(tica_dim, seed):
     print(f"\n[SCRATCH] tica_dim={tica_dim}")
     t0 = time.perf_counter()
 
-    Xlist, dmat = get_tica_data(trajectories, diff_full, tica_dim, seed)
+    Xlist, dmat = get_tica_data(tica_dim, seed)
     p, m = Xlist.shape
 
     omega = rff_omega(N_BASIS, SIGMA_RFF)
@@ -308,7 +272,7 @@ def _global_svd_tt_with_carries(core_getter, num_cores, rmax=None, tol=0.0):
     return U_cores, Sigma, V, carries
 
 
-def run_incremental_all_dims(trajectories, diff_full, seed):
+def run_incremental_all_dims(seed):
     print(f"\n########## INCREMENTAL -- seed={seed} ##########")
     inc_ev0: Dict[int, float] = {}
     inc_ev1: Dict[int, float] = {}
@@ -325,7 +289,7 @@ def run_incremental_all_dims(trajectories, diff_full, seed):
         print(f"[INCREMENTAL] dim={dim}")
         t0 = time.perf_counter()
 
-        Xlist, dmat = get_tica_data(trajectories, diff_full, dim, seed)
+        Xlist, dmat = get_tica_data(dim, seed)
         m = Xlist.shape[1]
 
         if dim == DIMS[0]:
@@ -412,19 +376,17 @@ def run_incremental_all_dims(trajectories, diff_full, seed):
 if __name__ == "__main__":
     DEMO_SEED = BASE_SEED + 1
 
-    trajectories, diff_full = load_raw_data()
-
-    print("Pre-fitting TICA pools (once per dim) ...")
+    print("Pre-loading TICA pools (once per dim) ...")
     for d in DIMS:
-        tica_pool(trajectories, d)
+        tica_pool(d)
 
     print(f"\n########## FULL (scratch) -- seed={DEMO_SEED} ##########")
     scratch_ev0, scratch_ev1 = {}, {}
     for d in DIMS:
-        e0, e1, t = run_scratch_one_dim(trajectories, diff_full, d, DEMO_SEED)
+        e0, e1, t = run_scratch_one_dim(d, DEMO_SEED)
         scratch_ev0[d], scratch_ev1[d] = e0, e1
 
-    inc_ev0, inc_ev1, inc_time = run_incremental_all_dims(trajectories, diff_full, DEMO_SEED)
+    inc_ev0, inc_ev1, inc_time = run_incremental_all_dims(DEMO_SEED)
 
     print(f"\nDemo result -- seed={DEMO_SEED} -- scratch vs incremental:")
     for d in DIMS:
