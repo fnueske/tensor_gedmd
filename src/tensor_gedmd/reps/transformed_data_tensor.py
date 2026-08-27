@@ -89,6 +89,7 @@ class Transformed_Data_Tensor_TT:
         self.dtype = np.result_type(*[self.psi[j].dtype for j in range(1, self.p + 1)])
 
         self.tt_cores: List[np.ndarray] = []
+        self._core_cache: Dict[int, np.ndarray] = {}
 
     @staticmethod
     def _normalize_psi_input(
@@ -207,9 +208,76 @@ class Transformed_Data_Tensor_TT:
                     f"psi[1].shape[1]={m}, but psi[{j}].shape[1]={m_j}."
                 )
 
-    def build_tt_cores(self) -> List[np.ndarray]:
+    def build_core(self, j: int, use_cache: bool = True) -> np.ndarray:
+        """
+        Build (and optionally cache) a single TT core on demand.
+
+        Parameters
+        ----------
+        j : int
+            1-based core index, 1 <= j <= p + 1. j = 1 is the first core,
+            j = p + 1 is the final (identity) core.
+        use_cache : bool, default=True
+            If True, reuse/store the result in an internal cache so repeated
+            calls (or ``iter_tt_cores``/``build_tt_cores``) don't rebuild the
+            same core twice.
+
+        Returns
+        -------
+        np.ndarray
+            The j-th TT core.
+        """
+        if not (1 <= j <= self.p + 1):
+            raise ValueError(f"j must be between 1 and {self.p + 1}, got {j}.")
+
+        if use_cache and j in self._core_cache:
+            return self._core_cache[j]
+
+        m = self.m
+
+        if j == 1:
+            n1 = self.n[1]
+            G1 = np.empty((1, n1, m), dtype=self.dtype)
+            G1[0, :, :] = self.psi[1]
+            if self.normalize_first_core:
+                G1 = G1 / np.sqrt(m)
+            core = G1
+        elif j == self.p + 1:
+            G_last = np.zeros((m, m, 1), dtype=self.dtype)
+            G_last[:, :, 0] = np.eye(m, dtype=self.dtype)
+            core = G_last
+        else:
+            nj = self.n[j]
+            diag_idx = np.arange(m)
+            Gj = np.zeros((m, nj, m), dtype=self.dtype)
+            Gj[diag_idx, :, diag_idx] = self.psi[j].T
+            core = Gj
+
+        if use_cache:
+            self._core_cache[j] = core
+        return core
+
+    def iter_tt_cores(self, use_cache: bool = True):
+        """
+        Yield the p + 1 TT cores one at a time (1-based order), building
+        each lazily via ``build_core``.
+        """
+        for j in range(1, self.p + 2):
+            yield self.build_core(j, use_cache=use_cache)
+
+    def clear_cache(self) -> None:
+        """Clear the per-core cache and the stored ``tt_cores`` list."""
+        self._core_cache.clear()
+        self.tt_cores = []
+
+    def build_tt_cores(self, use_cache: bool = True) -> List[np.ndarray]:
         """
         Build and store the TT cores of the transformed data tensor.
+
+        Parameters
+        ----------
+        use_cache : bool, default=True
+            Passed through to ``build_core`` for each core.
 
         Returns
         -------
@@ -223,33 +291,9 @@ class Transformed_Data_Tensor_TT:
         - Intermediate cores: (m, n_j, m)
         - Final core: (m, m, 1)
         """
-        m = self.m
-        cores: List[np.ndarray] = []
-
-        # First core: shape (1, n1, m)
-        n1 = self.n[1]
-        G1 = np.empty((1, n1, m), dtype=self.dtype)
-        G1[0, :, :] = self.psi[1]
-
-        if self.normalize_first_core:
-            G1 = G1 / np.sqrt(m)
-
-        cores.append(G1)
-
-        # Intermediate cores: shape (m, n_j, m), diagonal in rank indices
-        diag_idx = np.arange(m)
-        for j in range(2, self.p + 1):
-            nj = self.n[j]
-            Gj = np.zeros((m, nj, m), dtype=self.dtype)
-            Gj[diag_idx, :, diag_idx] = self.psi[j].T
-            cores.append(Gj)
-
-        # Final core: shape (m, m, 1)
-        G_last = np.zeros((m, m, 1), dtype=self.dtype)
-        G_last[:, :, 0] = np.eye(m, dtype=self.dtype)
-        cores.append(G_last)
-
-        self.tt_cores = cores
+        self.tt_cores = [
+            self.build_core(j, use_cache=use_cache) for j in range(1, self.p + 2)
+        ]
         return self.tt_cores
 
     def to_tt(self) -> TT:

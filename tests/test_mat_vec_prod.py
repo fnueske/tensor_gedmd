@@ -73,132 +73,6 @@ def random_tt_matrix(
     ]
 
 
-def relative_error_norm(a: np.ndarray, b: np.ndarray) -> float:
-    """
-    Compute relative error norm ||a-b|| / max(||b||, eps).
-    """
-    num = np.linalg.norm(a.reshape(-1) - b.reshape(-1))
-    den = max(np.linalg.norm(b.reshape(-1)), 1e-15)
-    return float(num / den)
-
-
-def absolute_error_norm(a: np.ndarray, b: np.ndarray) -> float:
-    """
-    Compute absolute error norm ||a-b||.
-    """
-    return float(np.linalg.norm(a.reshape(-1) - b.reshape(-1)))
-
-
-# =========================================================
-# Demo 1: 4-core general TT mat-vec vs dense
-# =========================================================
-def demo_general_vs_dense_4cores() -> None:
-    print("\n" + "=" * 70)
-    print("DEMO 1: 4-CORE GENERAL TT MAT-VEC vs DENSE")
-    print("=" * 70)
-
-    rng = np.random.default_rng(0)
-
-    # at least 4 cores
-    out_dims = [2, 3, 2, 2]
-    in_dims = [2, 2, 3, 2]
-
-    M = random_tt_matrix(out_dims, in_dims, [1, 2, 3, 2, 1], rng)
-    x = random_tt_vector(in_dims, [1, 2, 2, 2, 1], rng)
-
-    y_tt = tt_matrix_vector_product_general(M, x)
-
-    y_tt_dense = tt_vector_to_dense(y_tt).reshape(*out_dims)
-    M_dense = tt_matrix_to_dense(M).reshape(np.prod(out_dims), np.prod(in_dims))
-    x_dense = tt_vector_to_dense(x).reshape(-1)
-    y_dense_ref = (M_dense @ x_dense).reshape(*out_dims)
-
-    abs_err = absolute_error_norm(y_tt_dense, y_dense_ref)
-    rel_err = relative_error_norm(y_tt_dense, y_dense_ref)
-
-    print("\nOutput dims:", out_dims)
-    print("Input dims :", in_dims)
-
-    print("\nDense reference norm      :", np.linalg.norm(y_dense_ref.reshape(-1)))
-    print("TT result norm            :", np.linalg.norm(y_tt_dense.reshape(-1)))
-    print("Absolute error norm       :", abs_err)
-    print("Relative error norm       :", rel_err)
-    print("allclose                  :", np.allclose(y_tt_dense, y_dense_ref, atol=1e-10, rtol=1e-10))
-
-    print("\nTT inner product / norm checks:")
-    print("<y_tt, y_tt>              :", tt_inner_product(y_tt, y_tt))
-    print("tt_norm(y_tt)             :", tt_norm(y_tt))
-    print("dense ||y_tt||            :", np.linalg.norm(y_tt_dense.reshape(-1)))
-
-
-# =========================================================
-# Demo 2: 4-core via make_A_mv(use_general=True)
-# =========================================================
-def demo_make_A_mv_general_4cores() -> None:
-    print("\n" + "=" * 70)
-    print("DEMO 2: make_A_mv(use_general=True) WITH 4 CORES")
-    print("=" * 70)
-
-    rng = np.random.default_rng(1)
-
-    out_dims = [2, 2, 3, 2]
-    in_dims = [2, 3, 2, 2]
-
-    M = random_tt_matrix(out_dims, in_dims, [1, 2, 2, 2, 1], rng)
-    x = random_tt_vector(in_dims, [1, 2, 2, 2, 1], rng)
-
-    op = DummyGeneratorOp(tg_cores=M)
-    A_mv = make_A_mv(op, use_general=True)
-
-    y_tt = A_mv(x)
-
-    y_tt_dense = tt_vector_to_dense(y_tt).reshape(*out_dims)
-    M_dense = tt_matrix_to_dense(M).reshape(np.prod(out_dims), np.prod(in_dims))
-    x_dense = tt_vector_to_dense(x).reshape(-1)
-    y_dense_ref = (M_dense @ x_dense).reshape(*out_dims)
-
-    abs_err = absolute_error_norm(y_tt_dense, y_dense_ref)
-    rel_err = relative_error_norm(y_tt_dense, y_dense_ref)
-
-    print("\nDense reference norm      :", np.linalg.norm(y_dense_ref.reshape(-1)))
-    print("TT result norm            :", np.linalg.norm(y_tt_dense.reshape(-1)))
-    print("Absolute error norm       :", abs_err)
-    print("Relative error norm       :", rel_err)
-    print("allclose                  :", np.allclose(y_tt_dense, y_dense_ref, atol=1e-10, rtol=1e-10))
-
-
-# =========================================================
-# Demo 3: specialized routine for d=2 still works
-# =========================================================
-def demo_specialized_d2_error_norm() -> None:
-    print("\n" + "=" * 70)
-    print("DEMO 3: SPECIALIZED ROUTINE FOR d=2")
-    print("=" * 70)
-
-    rng = np.random.default_rng(2)
-
-    out_dims = [2, 3]
-    in_dims = [2, 2]
-
-    M = random_tt_matrix(out_dims, in_dims, [1, 2, 1], rng)
-    x = random_tt_vector(in_dims, [1, 2, 1], rng)
-
-    y_general = tt_matrix_vector_product_general(M, x)
-    y_special = tt_matrix_vector_product_csr_prepared(M, x)
-
-    y_general_dense = tt_vector_to_dense(y_general).reshape(*out_dims)
-    y_special_dense = tt_vector_to_dense(y_special).reshape(*out_dims)
-
-    abs_err = absolute_error_norm(y_special_dense, y_general_dense)
-    rel_err = relative_error_norm(y_special_dense, y_general_dense)
-
-    print("\nGeneral norm              :", np.linalg.norm(y_general_dense.reshape(-1)))
-    print("Specialized norm          :", np.linalg.norm(y_special_dense.reshape(-1)))
-    print("Absolute error norm       :", abs_err)
-    print("Relative error norm       :", rel_err)
-    print("allclose                  :", np.allclose(y_special_dense, y_general_dense, atol=1e-10, rtol=1e-10))
-
-
 # =========================================================
 # Pytest fixture
 # =========================================================
@@ -506,23 +380,80 @@ class TestExtractTTColumn:
 
 
 # =========================================================
-# Main runner for demos
+# New: generalized banded matvec (constant + variable Sigma)
+# via TgStiffnessOperator + prepare_operator + tt_matrix_vector_product
 # =========================================================
-def main() -> None:
-    print("script started")
-    demo_general_vs_dense_4cores()
-    demo_make_A_mv_general_4cores()
-    demo_specialized_d2_error_norm()
-    print("\nDone.")
+from tensor_gedmd.reps.stiffness_tt import TgStiffnessOperator
+from tensor_gedmd.algorithms.mat_vec_prod import prepare_operator, tt_matrix_vector_product
 
 
-if __name__ == "__main__":
-    main()
+class TestStiffnessOperatorBandedMatVec:
+    @pytest.mark.parametrize("sigma_case", ["none", "constant", "variable"])
+    @pytest.mark.parametrize("p,dims", [(2, [3, 4]), (3, [2, 3, 2])])
+    def test_matches_dense_reference(self, sigma_case, p, dims, rng: np.random.Generator) -> None:
+        m = 5
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
 
+        if sigma_case == "none":
+            Sigma = None
+        elif sigma_case == "constant":
+            A = rng.normal(size=(p, p))
+            Sigma = A @ A.T + np.eye(p)
+        else:
+            Sigma = np.zeros((p, p, m))
+            for l in range(m):
+                A = rng.normal(size=(p, p))
+                Sigma[:, :, l] = A @ A.T + np.eye(p)
 
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_dense = op.to_dense()
 
+        x_cores = random_tt_vector(dims, [1] + [3] * (p - 1) + [1], rng)
+        x_dense = tt_vector_to_dense(x_cores).reshape(-1)
 
+        prepared = prepare_operator(op)
+        y_cores = tt_matrix_vector_product(prepared, x_cores, max_rank=10_000, tolerance=1e-14)
+        y_dense = tt_vector_to_dense(y_cores).reshape(-1)
 
+        y_ref = A_dense @ x_dense
+        rel_err = np.linalg.norm(y_dense - y_ref) / max(np.linalg.norm(y_ref), 1e-15)
+        assert rel_err < 1e-8
 
+    def test_make_A_mv_dispatches_to_banded_path_for_stiffness_operator(
+        self, rng: np.random.Generator
+    ) -> None:
+        p, m, dims = 3, 5, [2, 3, 2]
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+        Sigma = np.zeros((p, p, m))
+        for l in range(m):
+            A = rng.normal(size=(p, p))
+            Sigma[:, :, l] = A @ A.T + np.eye(p)
 
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_mv = make_A_mv(op, max_rank=10_000, tolerance=1e-14)
 
+        x_cores = random_tt_vector(dims, [1, 3, 3, 1], rng)
+        y_cores = A_mv(x_cores)
+        y_dense = tt_vector_to_dense(y_cores).reshape(-1)
+
+        y_ref = op.to_dense() @ tt_vector_to_dense(x_cores).reshape(-1)
+        rel_err = np.linalg.norm(y_dense - y_ref) / max(np.linalg.norm(y_ref), 1e-15)
+        assert rel_err < 1e-8
+
+    def test_make_A_mv_still_dispatches_to_legacy_path_for_plain_tg_cores(
+        self, rng: np.random.Generator
+    ) -> None:
+        # Existing (pre-TgStiffnessOperator) usage must still work unchanged:
+        # an object with a plain .tg_cores list, not a TgStiffnessOperator.
+        M = random_tt_matrix([2, 2], [2, 2], [1, 2, 1], rng)
+        op = DummyGeneratorOp(tg_cores=M)
+        A_mv = make_A_mv(op, use_general=True)
+
+        x = random_tt_vector([2, 2], [1, 2, 1], rng)
+        y_dense = tt_vector_to_dense(A_mv(x)).reshape(-1)
+        M_dense = tt_matrix_to_dense(M).reshape(4, 4)
+        x_dense = tt_vector_to_dense(x).reshape(-1)
+
+        assert np.allclose(y_dense, M_dense @ x_dense, atol=1e-10, rtol=1e-10)

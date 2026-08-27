@@ -18,9 +18,16 @@ class BasisSet(ABC):
       - n = number of basis functions
       - m = batch size
 
-    For an input batch x with shape (m, d):
-      - __call__(x)   -> (m, n)
-      - gradient(x)   -> (m, n, d)
+    For an input batch X with shape (d, m):
+      - __call__(X)   -> (n, m)
+      - gradient(X)   -> (n, d, m)
+
+    This (features, samples) orientation matches what
+    ``tensor_gedmd.reps.transformed_data_tensor.Transformed_Data_Tensor_TT``,
+    ``tensor_gedmd.reps.stiffness_tt.TgStiffnessOperator``, and
+    ``tensor_gedmd.algorithms.mat_vec_prod.compute_A_r`` all expect for
+    ``psi``/``dpsi``, so basis evaluations can be used directly without any
+    manual transposition.
     """
 
     def __init__(self, *, dtype=np.float64) -> None:
@@ -33,36 +40,36 @@ class BasisSet(ABC):
     # ------------------------
     # Utilities
     # ------------------------
-    def _format_input(self, x: Any, *, expected_dim: int) -> np.ndarray:
-        """Ensure x has shape (m, expected_dim)."""
-        x_arr = np.asarray(x, dtype=self._dtype)
-        if x_arr.ndim == 1:
-            # treat as single sample
-            x_arr = x_arr[None, :]
-        if x_arr.ndim != 2 or x_arr.shape[1] != expected_dim:
-            raise ValueError(f"x must have shape (m, {expected_dim}); got {x_arr.shape}.")
-        return x_arr
+    def _format_input(self, X: Any, *, expected_dim: int) -> np.ndarray:
+        """Ensure X has shape (expected_dim, m)."""
+        X_arr = np.asarray(X, dtype=self._dtype)
+        if X_arr.ndim == 1:
+            # treat as a single physical dimension, m samples
+            X_arr = X_arr[None, :]
+        if X_arr.ndim != 2 or X_arr.shape[0] != expected_dim:
+            raise ValueError(f"X must have shape ({expected_dim}, m); got {X_arr.shape}.")
+        return X_arr
 
     # ------------------------
     # Public API
     # ------------------------
     @abstractmethod
-    def __call__(self, x: Any) -> np.ndarray:
-        """Evaluate basis functions. Must return shape (m, n)."""
+    def __call__(self, X: Any) -> np.ndarray:
+        """Evaluate basis functions. Must return shape (n, m)."""
         raise NotImplementedError
 
-    def gradient(self, x: Any) -> np.ndarray:
+    def gradient(self, X: Any) -> np.ndarray:
         """
-        Gradient of basis functions w.r.t. x.
+        Gradient of basis functions w.r.t. X.
 
-        Returns shape (m, n, d).
+        Returns shape (n, d, m).
         """
-        return self._gradient(x)
+        return self._gradient(X)
 
     # ------------------------
     # Subclass hooks
     # ------------------------
-    def _gradient(self, x: Any) -> np.ndarray:
+    def _gradient(self, X: Any) -> np.ndarray:
         """Subclasses should override if gradients are needed."""
         raise NotImplementedError(f"{self.__class__.__name__} does not implement _gradient().")
 

@@ -3,27 +3,33 @@ import matplotlib.pyplot as plt
 
 from tensor_gedmd.reps.tensor_train import TT
 from tensor_gedmd.algorithms.global_svd import global_svd_tt, global_svd_data_tensor
+from tensor_gedmd.reps.transformed_data_tensor import Transformed_Data_Tensor_TT
+from tensor_gedmd.operations import tt_to_dense
 
 
-def tt_to_dense(tt: TT) -> np.ndarray:
-    if tt.is_operator:
-        raise ValueError("tt_to_dense expects a tensor TT, not an operator TT.")
+def psi_tt_from_basis_evals(basis_evals: list[np.ndarray]) -> TT:
+    """
+    Build the Psi(X) TT tensor (diagonal-coupled feature cores + a final
+    sample core) from basis evaluations, as expected by global_svd_tt.
+    """
+    # Transformed_Data_Tensor_TT expects psi[j] with shape (n_j, m),
+    # i.e. transposed relative to the (m, n_k) convention used here.
+    psi = [B.T for B in basis_evals]
+    # normalize_first_core=False: this demo compares against the unnormalized
+    # dense_tensor_from_basis_evals reference below, so keep the same scale.
+    builder = Transformed_Data_Tensor_TT(psi=psi, normalize_first_core=False)
+    return builder.to_tt()
 
-    X = tt.get_core(0)
-    if X.ndim != 3:
-        raise ValueError(f"Core 0 must be 3D, got shape {X.shape}.")
 
-    for k in range(1, len(tt)):
-        G = tt.get_core(k)
-        if G.ndim != 3:
-            raise ValueError(f"Core {k} must be 3D, got shape {G.shape}.")
-        X = np.tensordot(X, G, axes=([-1], [0]))
-
-    if X.shape[0] != 1:
-        raise ValueError(f"Expected left boundary rank 1, got shape {X.shape}.")
-
-    X = np.squeeze(X, axis=0)
-    return X
+def global_svd_tt_from_basis_evals(
+    basis_evals: list[np.ndarray], rmax: int = None, tol: float = 0.0
+):
+    """
+    Thin adapter so global_svd_tt (which takes a general TT tensor) can be
+    driven from the same basis_evals used for global_svd_data_tensor below.
+    """
+    psi_tt = psi_tt_from_basis_evals(basis_evals)
+    return global_svd_tt(psi_tt, rmax=rmax, tol=tol)
 
 
 def reconstruction_from_factors(U_tt: TT, Sigma: np.ndarray, V_core: np.ndarray) -> np.ndarray:
@@ -170,7 +176,7 @@ if __name__ == "__main__":
     # ==========================================================
     U_tt, S_tt, V_tt, A_rec_tt, err_tt = run_single_test(
         "global_svd_tt",
-        global_svd_tt,
+        global_svd_tt_from_basis_evals,
         basis_evals,
         A_ref=A_ref_data,
         rmax=None,

@@ -3,9 +3,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from tensor_gedmd.algorithms.stiffness_tt import TgStiffnessOperator
+from tensor_gedmd.reps.stiffness_tt import TgStiffnessOperator
 from tensor_gedmd.basis_sets.random_fourier_features import RandomFourierFeatures
 from tensor_gedmd.reps.tensor_train import TT
+from tensor_gedmd.operations import tt_operator_to_dense as tt_to_dense
 
 
 def make_local_rff_data():
@@ -57,11 +58,11 @@ def make_local_rff_data():
     dpsi = []
 
     for basis, xk in zip(bases, x_by_dim):
-        vals = basis(xk)               # (m, n)
-        grads = basis._gradient(xk)    # (m, n, 1)
+        vals = basis(xk.T)               # xk.T: (1, m) -> vals: (n, m)
+        grads = basis._gradient(xk.T)    # (n, 1, m)
 
-        psi.append(vals.T)             # -> (n, m)
-        dpsi.append(grads[:, :, 0].T)  # -> (n, m)
+        psi.append(vals)                # (n, m)
+        dpsi.append(grads[:, 0, :])     # (n, m)
 
     assert len(psi) == p
     assert all(a.shape == (n, m) for a in psi)
@@ -108,64 +109,6 @@ def build_dense_reference(psi, dpsi):
 
     A *= -1.0 / m
     return A
-
-
-def tt_to_dense(tt):
-    """
-    Convert a TT operator with cores of shape
-        (r_{k-1}, n_k, n_k, r_k)
-    into a dense matrix of shape
-        (prod_k n_k, prod_k n_k).
-
-    Assumes operator-form TT cores, consistent with your printed shapes.
-    """
-    cores = tt.cores
-    if len(cores) == 0:
-        raise ValueError("TT has no cores.")
-
-    # Start from first core: (1, n, n, r1) -> (n, n, r1)
-    first = cores[0]
-    if first.ndim != 4:
-        raise ValueError("Expected TT operator cores with 4 dimensions.")
-
-    if first.shape[0] != 1:
-        raise ValueError("First TT rank must be 1.")
-
-    tensor = first[0]  # shape: (n1, n1, r1)
-
-    # Contract successive cores along TT-rank indices
-    for k in range(1, len(cores)):
-        core = cores[k]  # shape: (r_{k-1}, nk, nk, r_k)
-
-        if core.ndim != 4:
-            raise ValueError(f"Core {k} is not a 4D TT operator core.")
-
-        # tensor: (...row_dims..., ...col_dims..., r_prev)
-        # core  : (r_prev, nk, nk, r_next)
-        #
-        # Contract over r_prev
-        tensor = np.tensordot(tensor, core, axes=([-1], [0]))
-        # Result shape before reorder:
-        # (...rows..., ...cols..., nk, nk, r_next)
-
-    # Last rank must be 1
-    if tensor.shape[-1] != 1:
-        raise ValueError("Last TT rank must be 1.")
-
-    tensor = tensor[..., 0]
-
-    # At this point tensor shape is:
-    # (n1, n1, n2, n2, ..., np, np)
-    # We need to permute it to:
-    # (n1, n2, ..., np, n1, n2, ..., np)
-    p = len(cores)
-    perm = list(range(0, 2 * p, 2)) + list(range(1, 2 * p, 2))
-    tensor = np.transpose(tensor, axes=perm)
-
-    row_dims = [core.shape[1] for core in cores]
-    col_dims = [core.shape[2] for core in cores]
-
-    return tensor.reshape(int(np.prod(row_dims)), int(np.prod(col_dims)))
 
 
 def test_build_returns_tt_operator():
@@ -352,3 +295,85 @@ if __name__ == "__main__":
 
 
 
+
+
+class TestConstantSigmaNowGenuinelyUsed:
+    """
+    Regression coverage for a behavior change: TgStiffnessOperator used to
+    silently ignore a real (non-identity) constant Sigma when building the
+    TT operator. It now genuinely incorporates it via the same band-based
+    construction used for samplewise Sigma.
+    """
+
+    def test_constant_nonidentity_sigma_changes_the_operator(self) -> None:
+        rng = np.random.default_rng(11)
+        p, m, dims = 2, 6, [3, 4]
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+
+        op_none = TgStiffnessOperator(psi=psi, dpsi=dpsi)
+        Sigma_const = np.array([[2.0, 0.7], [0.7, 1.3]])
+        op_const = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma_const)
+
+        A_none = op_none.to_dense()
+        A_const = op_const.to_dense()
+
+        # A real, non-identity Sigma must actually change the operator.
+        assert not np.allclose(A_none, A_const)
+
+    def test_constant_sigma_matches_dense_direct_ground_truth(self) -> None:
+        rng = np.random.default_rng(12)
+        p, m, dims = 3, 5, [2, 3, 2]
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+
+        A = rng.normal(size=(p, p))
+        Sigma = A @ A.T + np.eye(p)  # SPD, non-identity
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_tt = op.to_dense()
+        A_direct = op.build_dense_direct()
+
+        assert np.allclose(A_tt, A_direct, atol=1e-10)
+        assert np.allclose(A_tt, A_tt.T)
+
+    def test_no_warning_for_constant_sigma(self, recwarn) -> None:
+        rng = np.random.default_rng(13)
+        psi = [rng.normal(size=(3, 5)), rng.normal(size=(4, 5))]
+        dpsi = [rng.normal(size=(3, 5)), rng.normal(size=(4, 5))]
+        Sigma = np.array([[2.0, 0.5], [0.5, 1.0]])
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        op.to_dense()
+
+        assert len(recwarn) == 0
+
+
+class TestBandBasedGroundTruth:
+    """build_dense_direct() as an independent ground truth for the TT construction."""
+
+    @pytest.mark.parametrize("p,dims", [(2, [3, 4]), (3, [2, 3, 2]), (4, [2, 3, 4, 2])])
+    @pytest.mark.parametrize("sigma_case", ["none", "constant", "variable"])
+    def test_to_dense_matches_build_dense_direct(self, p, dims, sigma_case) -> None:
+        rng = np.random.default_rng(hash((p, sigma_case)) % (2**31))
+        m = 6
+        psi = [rng.normal(size=(n, m)) for n in dims]
+        dpsi = [rng.normal(size=(n, m)) for n in dims]
+
+        if sigma_case == "none":
+            Sigma = None
+        elif sigma_case == "constant":
+            A = rng.normal(size=(p, p))
+            Sigma = A @ A.T + np.eye(p)
+        else:
+            Sigma = np.zeros((p, p, m))
+            for l in range(m):
+                A = rng.normal(size=(p, p))
+                Sigma[:, :, l] = A @ A.T + np.eye(p)
+
+        op = TgStiffnessOperator(psi=psi, dpsi=dpsi, Sigma=Sigma)
+        A_tt = op.to_dense()
+        A_direct = op.build_dense_direct()
+
+        assert np.allclose(A_tt, A_direct, atol=1e-9)
+        assert np.allclose(A_tt, A_tt.T, atol=1e-12)
