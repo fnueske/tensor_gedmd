@@ -15,7 +15,7 @@ see plots/plot_figure_lemon_slice.py for that.
 This file is the sweep/repeat orchestration only for Sections B.1 and B.2
 -- it imports the actual "what does one experiment compute" logic (both
 the eigenvalue idea and the rank idea) from
-lemon_slice_3d_run_calculation_base.py and wraps it in loops over data
+run_calculation_base.py and wraps it in loops over data
 sizes x 10 independent experiments. See that file to understand either
 idea on its own, or run it directly for a quick single-experiment demo
 without the full sweep. Section A (the single, non-repeated main PCCA
@@ -59,7 +59,7 @@ from scipy.optimize import linear_sum_assignment
 sys.path.append(str(Path(__file__).resolve().parents[1] / "common"))
 from results_io import save_results  # noqa: E402
 
-from lemon_slice_3d_run_calculation_base import (
+from run_calculation_base import (
     DIFFUSION_CONST,
     DSAVE,
     DT,
@@ -86,7 +86,7 @@ from tensor_gedmd.reps.transformed_data_tensor import Transformed_Data_Tensor_TT
 # ----------------------------------------------------------------------
 # Section-A-specific and sweep-orchestration config. Physical/pipeline
 # constants (KK, LL, Z_PARAM, BETA, N_FEATURES, R_TRUNC, ...) live in
-# lemon_slice_3d_run_calculation_base.py, since they're the same regardless
+# run_calculation_base.py, since they're the same regardless
 # of which m or repeat is being tested.
 # ----------------------------------------------------------------------
 M_MAIN = 7000                   # data size for the main PCCA pipeline

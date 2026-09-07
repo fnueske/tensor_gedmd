@@ -46,19 +46,32 @@ first.
 
 ## Data
 
-Raw trajectory/simulation data and the small cached results files are
-available on Zenodo.
+Every raw data file and every precomputed results file below is on this
+project's Zenodo record.
 
-- `lemon_slice_3d/` needs no external data -- it simulates its own data
-  from a physics model built into `tensor_gedmd` itself.
-- `chignolin/` and `ntl9/` need raw data -- see each folder's
-  `data/README.md`.
-- `introduction/` reuses the same raw data as `chignolin/`/`ntl9/`
-  rather than duplicating it.
+**Raw data -- needed only if you want to run the calculation scripts
+yourself:**
 
-Point each script at your data via the environment variables described in
-that case study's own README (or accept the defaults, which expect the
-data inside that case's own `data/` folder).
+| Case study | Files needed | Where to put them |
+|---|---|---|
+| `introduction/` | None -- loads a precomputed results file only, see below | -- |
+| `lemon_slice_3d/` | None -- simulates its own data from a physics model built into `tensor_gedmd` itself | -- |
+| `chignolin/` | `cln_tica.npy`, `cln_diff.npy` | `chignolin/data/` (or set `CHIGNOLIN_DATA_DIR` to point elsewhere) |
+| `ntl9/` | `ntl9_tica.npy`, `ntl9_diff.npy` | `ntl9/data/` (or set `NTL9_DATA_DIR` to point elsewhere) |
+
+Each script falls back to that case study's own `data/` folder by
+default -- you only need the environment variable if your data lives
+somewhere else. `introduction/`'s own figure reuses the same
+Chignolin/NTL9 raw data above rather than duplicating it, so no separate
+download is needed for that folder.
+
+**Just want a figure, not the raw data?** Every case study also has a
+small precomputed results file on Zenodo that lets you skip the
+calculation step entirely and go straight to plotting -- e.g. download
+`lemon_slice_3d_results.npz` and drop it in
+`lemon_slice_3d/results/lemon_slice_3d_results.npz`, then just run that
+folder's `plots/` script directly. **See each case study's own README for
+the exact filename and path** -- they differ slightly between folders.
 
 ## Requirements
 

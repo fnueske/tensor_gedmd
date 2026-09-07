@@ -32,6 +32,38 @@ Unlike the other case studies, this one simulates its own data on the fly
 itself (`tensor_gedmd.systems`). No raw data files, no Zenodo download
 needed for this figure.
 
+## Hardware / compute notes
+
+This was developed and run on a Mac with **24 GB of RAM**. This is simply
+the machine used, not a claimed minimum -- it may run comfortably with
+less, and we haven't tested the lower bound.
+
+One confirmed data point: **`run_calculation.py` (the full sweep) needs
+more than 20 GB of RAM** -- it failed to run on a collaborator's laptop
+with less. If you're memory-constrained, try `QUICK_TEST = True` (see
+below) first, which uses much smaller data sizes end-to-end.
+
+## Just want the plot? Skip `run_calculation.py` entirely
+
+If you don't want to (re)run the full sweep -- e.g. you hit the RAM limit
+above, or you just want to reproduce the figure -- download
+`lemon_slice_3d_results.npz` from this project's Zenodo record and place
+it at:
+
+```
+lemon_slice_3d/results/lemon_slice_3d_results.npz
+```
+
+(no renaming needed -- the Zenodo download is already named exactly what
+`plots/plot_figure_lemon_slice.py` expects.)
+
+Then just run the plot script directly, no calculation step needed:
+
+```bash
+cd lemon_slice_3d
+python plots/plot_figure_lemon_slice.py
+```
+
 ## Running it
 
 ```bash

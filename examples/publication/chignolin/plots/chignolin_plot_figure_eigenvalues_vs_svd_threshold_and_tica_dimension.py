@@ -146,7 +146,6 @@ def plot_combined_2x2(results, outfile, curve_dims=None, all_dims=None,
 
     plt.tight_layout(rect=[0, 0, 1, 0.985])
     save_figure(fig, outfile, also_png=True)
-    plt.show()
     plt.close()
 
 

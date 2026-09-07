@@ -180,7 +180,6 @@ def main() -> None:
 
     plt.tight_layout()
     save_figure(fig, OUTPUT_PATH, also_png=True)
-    plt.show()
 
     print("\nSoft membership statistics (mean +/- std per state):")
     for tag, chi_arr in [
