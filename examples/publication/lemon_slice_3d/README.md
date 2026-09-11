@@ -38,10 +38,9 @@ This was developed and run on a Mac with **24 GB of RAM**. This is simply
 the machine used, not a claimed minimum -- it may run comfortably with
 less, and we haven't tested the lower bound.
 
-One confirmed data point: **`run_calculation.py` (the full sweep) needs
-more than 20 GB of RAM** -- it failed to run on a collaborator's laptop
-with less. If you're memory-constrained, try `QUICK_TEST = True` (see
-below) first, which uses much smaller data sizes end-to-end.
+**`run_calculation.py` (the full sweep) needs more than 20 GB of RAM.** If
+you're memory-constrained, try `QUICK_TEST = True` (see below) first,
+which uses much smaller data sizes end-to-end.
 
 ## Just want the plot? Skip `run_calculation.py` entirely
 
