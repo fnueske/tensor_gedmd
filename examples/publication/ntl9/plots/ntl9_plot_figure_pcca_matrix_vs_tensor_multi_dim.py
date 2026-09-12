@@ -297,7 +297,6 @@ def main() -> None:
     plt.tight_layout(rect=(0, 0, 0.88, 0.96))
     fig.subplots_adjust(bottom=0.06, top=0.94)
     save_figure(fig, OUTPUT_PATH, also_png=True)
-    plt.show()
 
     print(f"\nSoft PCCA assignment counts with cut={SOFT_PCCA_CUT}:")
     for title, item in soft_counts.items():

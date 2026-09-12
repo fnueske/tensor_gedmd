@@ -1,5 +1,5 @@
 """
-Lemon Slice 3D -- lemon_slice_3d_run_calculation_base.py
+Lemon Slice 3D -- run_calculation_base.py
 
 Base file: the actual idea being tested here, with everything needed to
 run it once, made explicit and runnable standalone -- separate from the
@@ -37,7 +37,7 @@ Requirements
 
 Usage
 -----
-    python lemon_slice_3d_run_calculation_base.py
+    python run_calculation_base.py
 """
 
 from __future__ import annotations

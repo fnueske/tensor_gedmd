@@ -157,7 +157,6 @@ def main() -> None:
 
     plt.tight_layout()
     save_figure(fig, OUTPUT_PATH, also_png=True)
-    plt.show()
 
 
 if __name__ == "__main__":

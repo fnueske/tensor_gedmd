@@ -114,7 +114,6 @@ def main() -> None:
     fig.tight_layout(rect=[0, 0.04, 1, 0.97])
 
     save_figure(fig, OUTPUT_PATH, also_png=True)
-    plt.show()
 
 
 if __name__ == "__main__":
